@@ -10,11 +10,15 @@ Visualizes the core DP algorithms from the SDM notes:
 Uses a configurable gridworld MDP.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.colors import Normalize
+from pathlib import Path
+
 from matplotlib import cm
+from matplotlib.colors import Normalize
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Gridworld MDP
@@ -231,7 +235,7 @@ def demo_value_iteration():
                        title=f'Iteration {it+1}',
                        show_policy=True, policy=pi_hist[it])
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mdp_dp/vi_evolution.png', dpi=150)
+    plt.savefig(FIG_DIR / 'vi_evolution.png', dpi=150)
     plt.show()
 
     # Plot 2: Convergence (Bellman residual)
@@ -253,7 +257,7 @@ def demo_value_iteration():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mdp_dp/vi_convergence.png', dpi=150)
+    plt.savefig(FIG_DIR / 'vi_convergence.png', dpi=150)
     plt.show()
 
     print(f"Value Iteration converged in {len(deltas)} iterations")
@@ -280,7 +284,7 @@ def demo_policy_iteration():
                        show_policy=True, policy=pi_hist[it])
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mdp_dp/pi_evolution.png', dpi=150)
+    plt.savefig(FIG_DIR / 'pi_evolution.png', dpi=150)
     plt.show()
 
     print(f"Policy Iteration converged in {n_iters} iterations")
@@ -321,7 +325,7 @@ def demo_bellman_contraction():
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mdp_dp/bellman_contraction.png', dpi=150)
+    plt.savefig(FIG_DIR / 'bellman_contraction.png', dpi=150)
     plt.show()
 
 
@@ -350,7 +354,7 @@ def demo_vi_vs_pi():
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mdp_dp/vi_vs_pi.png', dpi=150)
+    plt.savefig(FIG_DIR / 'vi_vs_pi.png', dpi=150)
     plt.show()
 
     print(f"VI: {len(vi_errors)} iterations, PI: {len(pi_errors)} iterations")

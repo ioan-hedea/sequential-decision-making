@@ -8,9 +8,13 @@ Visualizes core POMDP concepts from the SDM notes:
 - Point-Based Value Iteration (PBVI) on Tiger problem
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 from itertools import product
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Tiger POMDP
@@ -135,7 +139,7 @@ def demo_belief_updates():
     ax2.set_title('Observations received')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/belief_updates.png', dpi=150)
+    plt.savefig(FIG_DIR / 'belief_updates.png', dpi=150)
     plt.show()
 
     print("Belief after 10 listens:", beliefs[-1])
@@ -176,7 +180,7 @@ def demo_belief_update_grid():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/belief_scenarios.png', dpi=150)
+    plt.savefig(FIG_DIR / 'belief_scenarios.png', dpi=150)
     plt.show()
 
 
@@ -297,7 +301,7 @@ def demo_alpha_vectors():
     fig.legend(handles=legend_elements, loc='lower center', ncol=4, fontsize=10)
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/alpha_vectors.png', dpi=150)
+    plt.savefig(FIG_DIR / 'alpha_vectors.png', dpi=150)
     plt.show()
 
     print(f"Final horizon alpha-vector count: {len(new_alphas)}")
@@ -428,7 +432,7 @@ def demo_pbvi():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/pbvi_convergence.png', dpi=150)
+    plt.savefig(FIG_DIR / 'pbvi_convergence.png', dpi=150)
     plt.show()
 
     # Policy visualization
@@ -471,7 +475,7 @@ def demo_pbvi():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/pbvi_policy.png', dpi=150)
+    plt.savefig(FIG_DIR / 'pbvi_policy.png', dpi=150)
     plt.show()
 
 
@@ -531,7 +535,7 @@ def demo_information_gain():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/information_gain.png', dpi=150)
+    plt.savefig(FIG_DIR / 'information_gain.png', dpi=150)
     plt.show()
 
 

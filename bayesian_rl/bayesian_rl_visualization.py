@@ -8,10 +8,13 @@ Visualizes core Bayesian RL concepts from the SDM notes:
 - Posterior shrinkage and sample efficiency
 """
 
-import numpy as np
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy import stats
-from collections import defaultdict
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Multi-Armed Bandit Environment
@@ -212,7 +215,7 @@ def demo_thompson_sampling():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/bayesian_rl/thompson_sampling.png', dpi=150)
+    plt.savefig(FIG_DIR / 'thompson_sampling.png', dpi=150)
     plt.show()
 
 
@@ -278,7 +281,7 @@ def demo_normal_gamma():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/bayesian_rl/normal_gamma.png', dpi=150)
+    plt.savefig(FIG_DIR / 'normal_gamma.png', dpi=150)
     plt.show()
 
 
@@ -446,7 +449,7 @@ def demo_bayes_adaptive_mdp():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/bayesian_rl/bayes_adaptive_mdp.png', dpi=150)
+    plt.savefig(FIG_DIR / 'bayes_adaptive_mdp.png', dpi=150)
     plt.show()
 
 
@@ -499,7 +502,7 @@ def demo_posterior_shrinkage():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/bayesian_rl/posterior_shrinkage.png', dpi=150)
+    plt.savefig(FIG_DIR / 'posterior_shrinkage.png', dpi=150)
     plt.show()
 
 

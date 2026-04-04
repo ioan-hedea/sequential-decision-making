@@ -11,10 +11,13 @@ Visualizes the core MCTS concepts from the SDM notes:
 Complements the existing POMCP implementation in pomcp/.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-from collections import defaultdict
 import math
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Simple Game Environment: Grid Navigation MDP
@@ -253,7 +256,7 @@ def demo_mcts_phases():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mcts/mcts_phases.png', dpi=150)
+    plt.savefig(FIG_DIR / 'mcts_phases.png', dpi=150)
     plt.show()
 
     best_action = mcts.get_best_action(root)
@@ -299,7 +302,7 @@ def demo_exploration_constant():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mcts/exploration_constant.png', dpi=150)
+    plt.savefig(FIG_DIR / 'exploration_constant.png', dpi=150)
     plt.show()
 
 
@@ -363,7 +366,7 @@ def demo_rollout_comparison():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mcts/rollout_comparison.png', dpi=150)
+    plt.savefig(FIG_DIR / 'rollout_comparison.png', dpi=150)
     plt.show()
 
 
@@ -404,7 +407,7 @@ def demo_sparse_sampling():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/mcts/sparse_sampling.png', dpi=150)
+    plt.savefig(FIG_DIR / 'sparse_sampling.png', dpi=150)
     plt.show()
 
     print("State space sizes:", state_space_sizes)

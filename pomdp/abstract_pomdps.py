@@ -12,9 +12,12 @@ Problems:
 4. Search & Rescue POMDP - find target in unknown environment
 """
 
-import numpy as np
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-from itertools import product
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 
 def belief_update(T, Obs, b, a, o, n_states):
@@ -251,7 +254,7 @@ def demo_medical_diagnosis():
     ax.legend(handles=legend_elements, fontsize=7, loc='upper right')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/medical_diagnosis.png', dpi=150)
+    plt.savefig(FIG_DIR / 'medical_diagnosis.png', dpi=150)
     plt.show()
 
 
@@ -480,7 +483,7 @@ def demo_machine_maintenance():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/machine_maintenance.png', dpi=150)
+    plt.savefig(FIG_DIR / 'machine_maintenance.png', dpi=150)
     plt.show()
 
 
@@ -597,7 +600,7 @@ def demo_search_rescue():
             ax.legend(fontsize=8)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/search_rescue.png', dpi=150)
+    plt.savefig(FIG_DIR / 'search_rescue.png', dpi=150)
     plt.show()
 
     # Entropy plot
@@ -608,7 +611,7 @@ def demo_search_rescue():
     ax.set_title('Search & Rescue: Uncertainty Decreases as Drone Gathers Information')
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/search_rescue_entropy.png', dpi=150)
+    plt.savefig(FIG_DIR / 'search_rescue_entropy.png', dpi=150)
     plt.show()
 
 
@@ -763,7 +766,7 @@ def demo_belief_simplex_3state():
     ax.set_title('Alpha-Vector Regions\n(PWLC value function)')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/pomdp/belief_simplex.png', dpi=150)
+    plt.savefig(FIG_DIR / 'belief_simplex.png', dpi=150)
     plt.show()
 
 

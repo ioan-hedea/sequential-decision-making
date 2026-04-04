@@ -10,10 +10,14 @@ Visualizes core verification concepts from the SDM notes:
 Complements the existing SMT Solver in irl/SMT Solver/.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
+
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import PatchCollection
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Simple Neural Network for Verification
@@ -203,7 +207,7 @@ def demo_relu_encoding():
     ax.axis('off')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/verification/relu_encoding.png', dpi=150)
+    plt.savefig(FIG_DIR / 'relu_encoding.png', dpi=150)
     plt.show()
 
 
@@ -289,7 +293,7 @@ def demo_reachability():
            ha='center', bbox=dict(boxstyle='round', facecolor='lightyellow'))
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/verification/reachability.png', dpi=150)
+    plt.savefig(FIG_DIR / 'reachability.png', dpi=150)
     plt.show()
 
 
@@ -406,7 +410,7 @@ def demo_bounded_model_checking():
     ax.axis('off')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/verification/bounded_model_checking.png', dpi=150)
+    plt.savefig(FIG_DIR / 'bounded_model_checking.png', dpi=150)
     plt.show()
 
 
@@ -490,7 +494,7 @@ def demo_decision_tree_verification():
             color='green', style='italic')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/verification/dt_verification.png', dpi=150)
+    plt.savefig(FIG_DIR / 'dt_verification.png', dpi=150)
     plt.show()
 
 

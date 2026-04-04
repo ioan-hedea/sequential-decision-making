@@ -9,9 +9,12 @@ Visualizes core safe RL concepts from the SDM notes:
 - Shielding for safe exploration
 """
 
-import numpy as np
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-from collections import defaultdict
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # CVaR Visualization
@@ -123,7 +126,7 @@ def demo_cvar():
                xytext=(0.15, -6), arrowprops=dict(arrowstyle='->', color='blue'))
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/safe_rl/cvar_visualization.png', dpi=150)
+    plt.savefig(FIG_DIR / 'cvar_visualization.png', dpi=150)
     plt.show()
 
 
@@ -235,7 +238,7 @@ def demo_robust_mdp():
                     textcoords="offset points", xytext=(0, 10), ha='center')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/safe_rl/robust_mdp.png', dpi=150)
+    plt.savefig(FIG_DIR / 'robust_mdp.png', dpi=150)
     plt.show()
 
 
@@ -353,7 +356,7 @@ def demo_spibb():
         ax.set_xlabel(f'{n_baseline}/9 states use baseline')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/safe_rl/spibb.png', dpi=150)
+    plt.savefig(FIG_DIR / 'spibb.png', dpi=150)
     plt.show()
 
     # Visit count heatmap
@@ -369,7 +372,7 @@ def demo_spibb():
     ax.set_xticks(range(3))
     ax.set_yticks(range(3))
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/safe_rl/visit_counts.png', dpi=150)
+    plt.savefig(FIG_DIR / 'visit_counts.png', dpi=150)
     plt.show()
 
 
@@ -475,7 +478,7 @@ def demo_constrained_mdp():
         ax.legend()
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/safe_rl/constrained_mdp.png', dpi=150)
+    plt.savefig(FIG_DIR / 'constrained_mdp.png', dpi=150)
     plt.show()
 
 

@@ -11,9 +11,12 @@ Uses a simple gridworld to show how different exploration
 strategies affect learning speed and state coverage.
 """
 
-import numpy as np
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-from collections import defaultdict
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Multi-Armed Bandit for Clean Comparison
@@ -232,7 +235,7 @@ def demo_exploration_comparison():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/depp_rl/exploration_comparison.png', dpi=150)
+    plt.savefig(FIG_DIR / 'exploration_comparison.png', dpi=150)
     plt.show()
 
 
@@ -275,7 +278,7 @@ def demo_epsilon_schedule():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/depp_rl/epsilon_schedules.png', dpi=150)
+    plt.savefig(FIG_DIR / 'epsilon_schedules.png', dpi=150)
     plt.show()
 
 
@@ -314,7 +317,7 @@ def demo_ucb_confidence():
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/depp_rl/ucb_confidence.png', dpi=150)
+    plt.savefig(FIG_DIR / 'ucb_confidence.png', dpi=150)
     plt.show()
 
 

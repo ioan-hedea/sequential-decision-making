@@ -8,9 +8,13 @@ Visualizes core model-based RL concepts from the SDM notes:
 - Model-free vs model-based sample efficiency comparison
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 from collections import defaultdict
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+FIG_DIR = Path(__file__).resolve().parent
 
 # ============================================================
 # Gridworld Environment
@@ -169,7 +173,7 @@ def demo_dyna_q():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/model_based_rl/dyna_q_comparison.png', dpi=150)
+    plt.savefig(FIG_DIR / 'dyna_q_comparison.png', dpi=150)
     plt.show()
 
 
@@ -225,7 +229,7 @@ def demo_model_learning():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/model_based_rl/model_learning.png', dpi=150)
+    plt.savefig(FIG_DIR / 'model_learning.png', dpi=150)
     plt.show()
 
 
@@ -295,7 +299,7 @@ def demo_policy_from_learned_model():
                         fontsize=7, color='black')
 
     plt.tight_layout()
-    plt.savefig('/Users/ioan-hedea/sequential-decision-making/model_based_rl/dyna_q_policy.png', dpi=150)
+    plt.savefig(FIG_DIR / 'dyna_q_policy.png', dpi=150)
     plt.show()
 
     print(f"Model entries: {len(agent.model)}")
