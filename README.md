@@ -23,6 +23,7 @@ A practical collection of sequential decision-making implementations and visuali
 | `mdp_dp/` | Value iteration, policy iteration, contraction | `python3 mdp_dp/mdp_visualization.py` |
 | `pomdp/` | Tiger POMDP, PBVI, abstract POMDP scenarios | `python3 pomdp/pomdp_visualization.py` |
 | `pomcp/` | Generic POMCP + Tiger/RockSample examples | `python3 pomcp/pomcp_visualization.py` |
+| `pomdp_benchmarks/` | Reproducible solver benchmarking across Tiger/RockSample/custom POMDPs | `python3 -m pomdp_benchmarks.run --quick` |
 | `mcts/` | UCT phases and exploration behavior | `python3 mcts/mcts_visualization.py` |
 | `model_based_rl/` | Dyna-Q and model-learning effects | `python3 model_based_rl/dyna_q_visualization.py` |
 | `bayesian_rl/` | Thompson sampling and Bayesian updates | `python3 bayesian_rl/bayesian_rl_visualization.py` |
@@ -57,6 +58,7 @@ pip install cvxopt gym torch
 python3 mdp_dp/mdp_visualization.py
 python3 pomdp/pomdp_visualization.py
 python3 pomcp/pomcp_visualization.py
+python3 -m pomdp_benchmarks.run --quick
 python3 mcts/mcts_visualization.py
 python3 model_based_rl/dyna_q_visualization.py
 python3 bayesian_rl/bayesian_rl_visualization.py
@@ -65,6 +67,37 @@ python3 verification/verification_visualization.py
 ```
 
 All visualization scripts save figures directly in their own module directory.
+
+## POMDP Benchmark Suite
+
+Run the full benchmark harness:
+
+```bash
+python3 -m pomdp_benchmarks.run --episodes 40 --belief-budgets 64,128,256,512
+```
+
+Included environments:
+- `Tiger`
+- `RockSample(n,k)` (default `4,3`)
+- `DrivingMerge` (custom highway merge under uncertainty)
+- `MedicalDiagnosis` (tests with costs + stop-and-diagnose)
+
+Included solvers:
+- Exact alpha-vector value iteration (finite-horizon tabular baseline)
+- PBVI
+- POMCP
+- DESPOT-style sparse-scenario online planner
+- Optional `AdaOPS`-style adaptive POMCP (`--include-adaops`)
+
+Outputs are saved as:
+- `benchmark_summary.csv`
+- `benchmark_summary.json`
+
+Plot scalability curves from the CSV:
+
+```bash
+python3 -m pomdp_benchmarks.plot_scaling --csv /path/to/benchmark_summary.csv
+```
 
 ## Gallery
 
