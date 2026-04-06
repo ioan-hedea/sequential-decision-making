@@ -40,6 +40,7 @@ def js_divergence(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
 class EpisodeRecord:
     discounted_return: float
     mean_step_time_sec: float
+    total_compute_sec: float
     mean_belief_divergence: float | None
     steps: int
 

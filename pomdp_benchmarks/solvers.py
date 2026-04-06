@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import json
 import math
+import os
+import shutil
+import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from itertools import product
+from pathlib import Path
 from typing import Callable, Iterable
 
 import numpy as np
@@ -622,6 +628,207 @@ class DESPOTSolver(BaseSolver):
         return belief_from_particles(self.env.n_states, self.particles)
 
 
+class JuliaSARSOPSolver(BaseSolver):
+    """
+    Optional bridge to Julia + SARSOP.jl.
+
+    This solver exports the current tabular model to JSON, calls a Julia bridge
+    script that computes an alpha-vector policy with SARSOP, and imports
+    alpha-vectors back into Python for fast online action selection.
+    """
+
+    name = "SARSOPJulia"
+    supports_belief_budget = False
+
+    def __init__(
+        self,
+        julia_bin: str = "julia",
+        timeout_sec: float = 120.0,
+        precision: float = 1e-3,
+        bridge_script: str | None = None,
+    ) -> None:
+        self.julia_bin = julia_bin
+        self.timeout_sec = float(timeout_sec)
+        self.precision = float(precision)
+        default_script = Path(__file__).resolve().parent / "julia" / "sarsop_bridge.jl"
+        self.bridge_script = Path(bridge_script) if bridge_script else default_script
+
+        self.alphas: np.ndarray | None = None
+        self.actions: np.ndarray | None = None
+        self._planned_signature: tuple | None = None
+
+    def _resolve_julia_executable(self) -> str | None:
+        """
+        Resolve a usable Julia executable.
+
+        If `self.julia_bin` points to a juliaup launcher, prefer a concrete
+        installed Julia binary under ~/.julia/juliaup/julia-*/bin/julia to
+        avoid launcher lock/config issues.
+        """
+        resolved = shutil.which(self.julia_bin)
+        if resolved is None:
+            return None
+
+        resolved_path = Path(resolved)
+        if ".juliaup/bin" in str(resolved_path):
+            installs_root = Path.home() / ".julia" / "juliaup"
+            candidates = [p for p in installs_root.glob("julia-*/bin/julia") if p.exists()]
+            if candidates:
+                candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                return str(candidates[0])
+
+        return str(resolved_path)
+
+    def reset(
+        self,
+        env: TabularPOMDP,
+        rng: np.random.Generator,
+        belief_budget: int,
+        exact_belief: np.ndarray,
+    ) -> None:
+        del rng, belief_budget, exact_belief
+
+        julia_exec = self._resolve_julia_executable()
+        if julia_exec is None:
+            raise UnsupportedSolverError(
+                f"{self.name} unavailable: Julia executable '{self.julia_bin}' not found in PATH."
+            )
+        if not self.bridge_script.exists():
+            raise UnsupportedSolverError(
+                f"{self.name} unavailable: bridge script not found at {self.bridge_script}."
+            )
+
+        signature = (env.name, env.n_states, env.n_actions, env.n_obs, env.horizon)
+        if self._planned_signature == signature and self.alphas is not None and self.actions is not None:
+            return
+
+        payload = {
+            "name": env.name,
+            "gamma": float(env.gamma),
+            "transition": env.T.tolist(),
+            "observation": env.O.tolist(),
+            "reward": env.R.tolist(),
+            "initial_belief": env.initial_belief().tolist(),
+        }
+
+        with tempfile.TemporaryDirectory(prefix="sarsop_bridge_") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            model_path = tmp_path / "model.json"
+            out_path = tmp_path / "policy.json"
+
+            model_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            cmd = [
+                julia_exec,
+                "--startup-file=no",
+                str(self.bridge_script),
+                "--model-json",
+                str(model_path),
+                "--output-json",
+                str(out_path),
+                "--timeout-sec",
+                str(self.timeout_sec),
+                "--precision",
+                str(self.precision),
+            ]
+
+            timeout = max(10.0, self.timeout_sec + 20.0)
+
+            def _run_julia(env_override: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+                run_env = os.environ.copy()
+                if env_override:
+                    run_env.update(env_override)
+                return subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env=run_env,
+                    timeout=timeout,
+                )
+
+            try:
+                proc = _run_julia()
+            except subprocess.TimeoutExpired as exc:
+                raise UnsupportedSolverError(
+                    f"{self.name} failed: Julia bridge timed out after {exc.timeout:.1f}s."
+                ) from exc
+
+            # Fallback for restricted environments where juliaup cannot lock ~/.julia.
+            if proc.returncode != 0 and "Could not create lockfile" in ((proc.stderr or "") + (proc.stdout or "")):
+                juliaup_src = Path.home() / ".julia" / "juliaup"
+                juliaup_cfg = tmp_path / "juliaup-config"
+                if juliaup_src.exists():
+                    shutil.copytree(juliaup_src, juliaup_cfg, dirs_exist_ok=True)
+                    try:
+                        proc = _run_julia({"JULIAUP_CONFIG_DIR": str(juliaup_cfg)})
+                    except subprocess.TimeoutExpired as exc:
+                        raise UnsupportedSolverError(
+                            f"{self.name} failed: Julia bridge timed out after {exc.timeout:.1f}s."
+                        ) from exc
+
+            if proc.returncode != 0:
+                stderr = (proc.stderr or "").strip()
+                stdout = (proc.stdout or "").strip()
+                detail = stderr if stderr else stdout
+                hint = ""
+                lower_detail = detail.lower()
+                if "could not create lockfile" in lower_detail:
+                    hint = (
+                        " Hint: juliaup launcher cannot write ~/.julia in this environment. "
+                        "Run with a real Julia binary via --julia-bin, or run outside restricted sandbox."
+                    )
+                elif "failed to determine the command for the `release` channel" in lower_detail:
+                    hint = (
+                        " Hint: juliaup release channel looks broken. Try: "
+                        "`juliaup add release && juliaup default release`."
+                    )
+                raise UnsupportedSolverError(
+                    f"{self.name} failed (exit {proc.returncode}). {detail}{hint}"
+                )
+
+            if not out_path.exists():
+                raise UnsupportedSolverError(
+                    f"{self.name} failed: Julia bridge did not produce {out_path.name}."
+                )
+
+            result = json.loads(out_path.read_text(encoding="utf-8"))
+
+        if "error" in result:
+            raise UnsupportedSolverError(f"{self.name} failed: {result['error']}")
+
+        alphas = np.asarray(result.get("alphas", []), dtype=float)
+        actions = np.asarray(result.get("actions", []), dtype=int)
+
+        if alphas.ndim != 2 or alphas.shape[1] != env.n_states:
+            raise UnsupportedSolverError(
+                f"{self.name} failed: malformed alpha-vectors from Julia bridge."
+            )
+        if len(actions) != alphas.shape[0]:
+            raise UnsupportedSolverError(
+                f"{self.name} failed: action map length mismatch from Julia bridge."
+            )
+        if np.any(actions < 0) or np.any(actions >= env.n_actions):
+            raise UnsupportedSolverError(
+                f"{self.name} failed: action indices out of range in Julia output."
+            )
+
+        self.alphas = alphas
+        self.actions = actions
+        self._planned_signature = signature
+
+    def act(self, exact_belief: np.ndarray) -> int:
+        if self.alphas is None or self.actions is None or len(self.actions) == 0:
+            return 0
+        values = self.alphas @ exact_belief
+        idx = int(np.argmax(values))
+        return int(self.actions[idx])
+
+    def observe(self, action: int, observation: int, exact_belief: np.ndarray) -> None:
+        del action, observation, exact_belief
+        return
+
+
 class AdaOPSSolver(POMCPSolver):
     name = "AdaOPS"
 
@@ -651,7 +858,13 @@ class SolverSpec:
     factory: Callable[[], BaseSolver]
 
 
-def make_solver_suite(include_adaops: bool = False) -> list[SolverSpec]:
+def make_solver_suite(
+    include_adaops: bool = False,
+    include_sarsop_julia: bool = False,
+    julia_bin: str = "julia",
+    sarsop_timeout_sec: float = 120.0,
+    sarsop_precision: float = 1e-3,
+) -> list[SolverSpec]:
     specs = [
         SolverSpec("ExactValueIteration", lambda: ExactValueIterationSolver()),
         SolverSpec("PBVI", lambda: PBVISolver()),
@@ -661,5 +874,17 @@ def make_solver_suite(include_adaops: bool = False) -> list[SolverSpec]:
 
     if include_adaops:
         specs.append(SolverSpec("AdaOPS", lambda: AdaOPSSolver()))
+
+    if include_sarsop_julia:
+        specs.append(
+            SolverSpec(
+                "SARSOPJulia",
+                lambda: JuliaSARSOPSolver(
+                    julia_bin=julia_bin,
+                    timeout_sec=sarsop_timeout_sec,
+                    precision=sarsop_precision,
+                ),
+            )
+        )
 
     return specs

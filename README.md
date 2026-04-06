@@ -88,15 +88,32 @@ Included solvers:
 - POMCP
 - DESPOT-style sparse-scenario online planner
 - Optional `AdaOPS`-style adaptive POMCP (`--include-adaops`)
+- Optional Julia `SARSOP.jl` bridge (`--include-sarsop-julia`)
 
 Outputs are saved as:
 - `benchmark_summary.csv`
 - `benchmark_summary.json`
 
+Reported metrics (with `mean +- std` across episodes):
+- Discounted return
+- Runtime per step (`step_time_mean_ms`, `step_time_std_ms`)
+- Total compute per episode (`episode_compute_mean_sec`, `episode_compute_std_sec`)
+- Belief divergence for particle-based solvers
+
 Plot scalability curves from the CSV:
 
 ```bash
 python3 -m pomdp_benchmarks.plot_scaling --csv /path/to/benchmark_summary.csv
+```
+
+The plot includes error bars (`mean +- std`) for return, per-step runtime, and
+total episode compute versus belief budget.
+
+Optional Julia SARSOP bridge setup:
+
+```bash
+julia -e 'using Pkg; Pkg.add(["POMDPs","POMDPTools","SARSOP","JSON3"])'
+python3 -m pomdp_benchmarks.run --quick --include-sarsop-julia
 ```
 
 ## Gallery

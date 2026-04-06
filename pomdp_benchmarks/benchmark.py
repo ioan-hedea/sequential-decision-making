@@ -19,6 +19,10 @@ class BenchmarkConfig:
     base_seed: int = 7
     belief_budgets: tuple[int, ...] = (64, 128, 256, 512)
     include_adaops: bool = False
+    include_sarsop_julia: bool = False
+    julia_bin: str = "julia"
+    sarsop_timeout_sec: float = 120.0
+    sarsop_precision: float = 1e-3
     rocksample_n: int = 4
     rocksample_k: int = 3
     max_steps_override: int | None = None
@@ -34,6 +38,8 @@ class AggregateResult:
     discounted_return_std: float | None
     step_time_mean_ms: float | None
     step_time_std_ms: float | None
+    episode_compute_mean_sec: float | None
+    episode_compute_std_sec: float | None
     belief_divergence_mean: float | None
     belief_divergence_std: float | None
     status: str
@@ -81,6 +87,7 @@ def run_episode(
     return EpisodeRecord(
         discounted_return=float(discounted_return),
         mean_step_time_sec=float(np.mean(step_times) if step_times else 0.0),
+        total_compute_sec=float(np.sum(step_times) if step_times else 0.0),
         mean_belief_divergence=(float(np.mean(divergences)) if divergences else None),
         steps=len(step_times),
     )
@@ -94,6 +101,7 @@ def _aggregate_records(
 ) -> AggregateResult:
     rewards = np.array([r.discounted_return for r in records], dtype=float)
     times_ms = np.array([1000.0 * r.mean_step_time_sec for r in records], dtype=float)
+    total_compute_sec = np.array([r.total_compute_sec for r in records], dtype=float)
 
     divergence_values = [r.mean_belief_divergence for r in records if r.mean_belief_divergence is not None]
     if divergence_values:
@@ -113,6 +121,8 @@ def _aggregate_records(
         discounted_return_std=float(rewards.std()),
         step_time_mean_ms=float(times_ms.mean()),
         step_time_std_ms=float(times_ms.std()),
+        episode_compute_mean_sec=float(total_compute_sec.mean()),
+        episode_compute_std_sec=float(total_compute_sec.std()),
         belief_divergence_mean=div_mean,
         belief_divergence_std=div_std,
         status="ok",
@@ -124,7 +134,13 @@ def run_benchmark_suite(config: BenchmarkConfig) -> list[AggregateResult]:
         rocksample_n=config.rocksample_n,
         rocksample_k=config.rocksample_k,
     )
-    solver_specs = make_solver_suite(include_adaops=config.include_adaops)
+    solver_specs = make_solver_suite(
+        include_adaops=config.include_adaops,
+        include_sarsop_julia=config.include_sarsop_julia,
+        julia_bin=config.julia_bin,
+        sarsop_timeout_sec=config.sarsop_timeout_sec,
+        sarsop_precision=config.sarsop_precision,
+    )
 
     results: list[AggregateResult] = []
 
@@ -168,6 +184,8 @@ def run_benchmark_suite(config: BenchmarkConfig) -> list[AggregateResult]:
                             discounted_return_std=None,
                             step_time_mean_ms=None,
                             step_time_std_ms=None,
+                            episode_compute_mean_sec=None,
+                            episode_compute_std_sec=None,
                             belief_divergence_mean=None,
                             belief_divergence_std=None,
                             status="skipped",
@@ -207,6 +225,8 @@ def save_results(results: list[AggregateResult], output_dir: Path) -> tuple[Path
                 "discounted_return_std",
                 "step_time_mean_ms",
                 "step_time_std_ms",
+                "episode_compute_mean_sec",
+                "episode_compute_std_sec",
                 "belief_divergence_mean",
                 "belief_divergence_std",
                 "status",
@@ -228,13 +248,14 @@ def format_results_table(results: list[AggregateResult]) -> str:
         "Solver",
         "Budget",
         "Return mean+-std",
-        "Step ms",
+        "Step ms+-std",
+        "Episode sec+-std",
         "Belief div",
         "Status",
     ]
 
     lines = [
-        f"{headers[0]:<20} {headers[1]:<20} {headers[2]:>7} {headers[3]:>24} {headers[4]:>12} {headers[5]:>12} {headers[6]:>10}"
+        f"{headers[0]:<20} {headers[1]:<20} {headers[2]:>7} {headers[3]:>24} {headers[4]:>16} {headers[5]:>18} {headers[6]:>12} {headers[7]:>10}"
     ]
     lines.append("-" * len(lines[0]))
 
@@ -242,14 +263,16 @@ def format_results_table(results: list[AggregateResult]) -> str:
         if r.status != "ok":
             ret_text = "-"
             time_text = "-"
+            ep_text = "-"
             div_text = "-"
         else:
             ret_text = f"{r.discounted_return_mean: .2f} +- {r.discounted_return_std:.2f}"
-            time_text = f"{r.step_time_mean_ms:.2f}"
+            time_text = f"{r.step_time_mean_ms:.2f} +- {r.step_time_std_ms:.2f}"
+            ep_text = f"{r.episode_compute_mean_sec:.3f} +- {r.episode_compute_std_sec:.3f}"
             div_text = "-" if r.belief_divergence_mean is None else f"{r.belief_divergence_mean:.4f}"
 
         lines.append(
-            f"{r.env:<20} {r.solver:<20} {r.belief_budget:>7} {ret_text:>24} {time_text:>12} {div_text:>12} {r.status:>10}"
+            f"{r.env:<20} {r.solver:<20} {r.belief_budget:>7} {ret_text:>24} {time_text:>16} {ep_text:>18} {div_text:>12} {r.status:>10}"
         )
 
     skipped = [r for r in results if r.status != "ok"]

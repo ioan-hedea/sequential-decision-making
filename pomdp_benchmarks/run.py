@@ -34,6 +34,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, default=7, help="Base random seed.")
     parser.add_argument("--include-adaops", action="store_true", help="Include optional AdaOPS solver.")
+    parser.add_argument(
+        "--include-sarsop-julia",
+        action="store_true",
+        help="Include optional Julia bridge solver using SARSOP.jl.",
+    )
+    parser.add_argument("--julia-bin", type=str, default="julia", help="Julia executable for SARSOP bridge.")
+    parser.add_argument(
+        "--sarsop-timeout-sec",
+        type=float,
+        default=120.0,
+        help="SARSOP Julia bridge solve timeout in seconds.",
+    )
+    parser.add_argument(
+        "--sarsop-precision",
+        type=float,
+        default=1e-3,
+        help="SARSOP precision epsilon (smaller is more accurate/slower).",
+    )
     parser.add_argument("--rocksample-n", type=int, default=4, help="RockSample grid size N.")
     parser.add_argument("--rocksample-k", type=int, default=3, help="RockSample rock count K.")
     parser.add_argument("--max-steps", type=int, default=None, help="Override max steps per episode.")
@@ -66,6 +84,10 @@ def main() -> None:
         base_seed=args.seed,
         belief_budgets=budgets,
         include_adaops=args.include_adaops,
+        include_sarsop_julia=args.include_sarsop_julia,
+        julia_bin=args.julia_bin,
+        sarsop_timeout_sec=args.sarsop_timeout_sec,
+        sarsop_precision=args.sarsop_precision,
         rocksample_n=args.rocksample_n,
         rocksample_k=args.rocksample_k,
         max_steps_override=args.max_steps,
