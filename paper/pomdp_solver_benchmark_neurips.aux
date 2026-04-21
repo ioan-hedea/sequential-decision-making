@@ -1,0 +1,93 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{kaelbling1998planning}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Motivation}{1}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Problem}{1}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Contributions}{1}{subsection.1.3}\protected@file@percent }
+\citation{smallwood1973optimal,littman1994witness}
+\citation{pineau2003pbvi}
+\citation{silver2010pomcp,somani2013despot}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}POMDP Formulation}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Solver Categories}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Solver as a Budget-Constrained Policy Mapping}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}A Compute-Allocation Method Instantiation}{2}{subsection.2.4}\protected@file@percent }
+\citation{kaelbling1998planning,smallwood1973optimal,littman1994witness}
+\citation{pineau2003pbvi,kurniawati2008sarsop}
+\citation{ross2007aems,ross2008online}
+\citation{silver2010pomcp}
+\citation{somani2013despot,luo2019isdespot}
+\citation{sunberg2017pomcpow}
+\citation{karkus2017qmdpnet,igl2018dvrl}
+\citation{kurniawati2008sarsop}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Related Work}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{3}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Solvers}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Environments}{3}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Belief Budget}{3}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Metrics}{4}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Protocol}{4}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Implementation Details and Reproducibility}{4}{subsection.4.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Benchmark design summary.}}{4}{table.1}\protected@file@percent }
+\newlabel{tab:design}{{1}{4}{Benchmark design summary}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Benchmark Design Snapshot}{4}{subsection.4.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results}{4}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Scalability Curves}{4}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Return--Compute Pareto Trade-off}{5}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Key Quantitative Snapshot}{5}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Key Observations}{5}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 1: No universal solver.}{5}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 2: Offline vs online trade-off.}{5}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 3: Compute--performance coupling.}{5}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 4: Environment structure matters.}{5}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 5: Belief divergence trends are measurable.}{5}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Observation 6: Tiger exposes an important POMCP failure mode.}{5}{section*.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Return scaling from the 300-episode expanded benchmark with \texttt  {SARSOPJulia} included and \texttt  {BASDeepRolloutLearned} shown where learned checkpoints exist. Each panel reports mean discounted return with 95\% confidence intervals for one environment and budgets $64/128/256/512$ (budget-invariant solvers appear at a single point). The main benchmark pattern is that strong offline alpha-vector methods remain competitive much farther into the hard tabular regime than a raw size-based story would suggest; the learned-BAS curves remain secondary diagnostics rather than central benchmark winners.}}{6}{figure.1}\protected@file@percent }
+\newlabel{fig:scaling}{{1}{6}{Return scaling from the 300-episode expanded benchmark with \texttt {SARSOPJulia} included and \texttt {BASDeepRolloutLearned} shown where learned checkpoints exist. Each panel reports mean discounted return with 95\% confidence intervals for one environment and budgets $64/128/256/512$ (budget-invariant solvers appear at a single point). The main benchmark pattern is that strong offline alpha-vector methods remain competitive much farther into the hard tabular regime than a raw size-based story would suggest; the learned-BAS curves remain secondary diagnostics rather than central benchmark winners}{figure.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Observation 7: More episodes clarify, but do not fully resolve, the merge tasks.}{6}{section*.8}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Return versus compute Pareto frontiers for the expanded 300-episode benchmark with \texttt  {SARSOPJulia}. Compute is measured as episode-level online compute in seconds. Error bars show 95\% confidence intervals, each panel uses a log compute axis, and dashed frontiers mark non-dominated solver--budget choices within an environment. The updated figure shows that offline alpha-vector methods dominate most of the tabular suite, while the merge tasks remain the clearest unresolved region in which online or learned search can become competitive.}}{7}{figure.2}\protected@file@percent }
+\newlabel{fig:pareto}{{2}{7}{Return versus compute Pareto frontiers for the expanded 300-episode benchmark with \texttt {SARSOPJulia}. Compute is measured as episode-level online compute in seconds. Error bars show 95\% confidence intervals, each panel uses a log compute axis, and dashed frontiers mark non-dominated solver--budget choices within an environment. The updated figure shows that offline alpha-vector methods dominate most of the tabular suite, while the merge tasks remain the clearest unresolved region in which online or learned search can become competitive}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Secondary Method Study: Learned \texttt  {BASDeepRollout}}{7}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Best observed mean return per environment from the 300-episode expanded run (reported as mean $\pm $ 95\% confidence interval). Rows marked ``Open'' have 95\% confidence intervals overlapping zero and therefore remain statistically unresolved at the current sample count.}}{8}{table.2}\protected@file@percent }
+\newlabel{tab:best}{{2}{8}{Best observed mean return per environment from the 300-episode expanded run (reported as mean $\pm $ 95\% confidence interval). Rows marked ``Open'' have 95\% confidence intervals overlapping zero and therefore remain statistically unresolved at the current sample count}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Representative offline precomputation times measured as a cold planner reset on the benchmark machine. These setup costs are not included in the online step/episode compute metrics reported elsewhere in the paper.}}{8}{table.3}\protected@file@percent }
+\newlabel{tab:offlinecost}{{3}{8}{Representative offline precomputation times measured as a cold planner reset on the benchmark machine. These setup costs are not included in the online step/episode compute metrics reported elsewhere in the paper}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Representative learned \texttt  {BASDeepRollout} results. Entries report best mean return $\pm $ 95\% confidence interval and episode-level online compute; ``Best baseline'' is the strongest non-BAS result from the same matched run.}}{8}{table.4}\protected@file@percent }
+\newlabel{tab:basdr}{{4}{8}{Representative learned \texttt {BASDeepRollout} results. Entries report best mean return $\pm $ 95\% confidence interval and episode-level online compute; ``Best baseline'' is the strongest non-BAS result from the same matched run}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Failure and Diagnostic Analysis}{8}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Tiger as a theory-of-failure case.}{8}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Belief quality is diagnostic, not dispositive.}{8}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{9}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Why Differences Occur}{9}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}A Testable Crossover Conjecture}{9}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Conjecture 1 (Structural crossover).}{9}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Practical Implications}{10}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Solver Selection by Regime}{10}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Limitations}{10}{section.7}\protected@file@percent }
+\bibstyle{plainnat}
+\bibdata{references}
+\bibcite{igl2018dvrl}{{1}{2018}{{Igl et~al.}}{{Igl, Zintgraf, Le, Wood, and Whiteson}}}
+\bibcite{kaelbling1998planning}{{2}{1998}{{Kaelbling et~al.}}{{Kaelbling, Littman, and Cassandra}}}
+\bibcite{karkus2017qmdpnet}{{3}{2017}{{Karkus et~al.}}{{Karkus, Hsu, and Lee}}}
+\bibcite{kurniawati2008sarsop}{{4}{2008}{{Kurniawati et~al.}}{{Kurniawati, Hsu, and Lee}}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Threats to Validity}{11}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{11}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Best Solver at Each Budget}{11}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {B}Additional BAS Ablation}{11}{appendix.B}\protected@file@percent }
+\bibcite{littman1994witness}{{5}{1994}{{Littman et~al.}}{{Littman, Cassandra, and Kaelbling}}}
+\bibcite{luo2019isdespot}{{6}{2019}{{Luo et~al.}}{{Luo, Bai, Hsu, and Lee}}}
+\bibcite{pineau2003pbvi}{{7}{2003}{{Pineau et~al.}}{{Pineau, Gordon, and Thrun}}}
+\bibcite{ross2007aems}{{8}{2007}{{Ross and Chaib-draa}}{{}}}
+\bibcite{ross2008online}{{9}{2008}{{Ross et~al.}}{{Ross, Pineau, Paquet, and Chaib-draa}}}
+\bibcite{silver2010pomcp}{{10}{2010}{{Silver and Veness}}{{}}}
+\bibcite{smallwood1973optimal}{{11}{1973}{{Smallwood and Sondik}}{{}}}
+\bibcite{somani2013despot}{{12}{2013}{{Somani et~al.}}{{Somani, Ye, Hsu, and Lee}}}
+\bibcite{sunberg2017pomcpow}{{13}{2017}{{Sunberg and Kochenderfer}}{{}}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Best observed solver at each tested belief budget for every environment in the 300-episode run. Rows marked as best are selected by highest mean discounted return among completed configurations.}}{12}{table.5}\protected@file@percent }
+\newlabel{tab:budgetwinners}{{5}{12}{Best observed solver at each tested belief budget for every environment in the 300-episode run. Rows marked as best are selected by highest mean discounted return among completed configurations}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces TD($\lambda $) ablation on learned \texttt  {BASDeepRollout}. ``Base'' is the original learned policy--value setup; ``TD($\lambda $)'' uses separate policy/value networks, Adam, and TD($\lambda $) relabeling. Entries report the best learned-BAS point per environment from each run.}}{12}{table.6}\protected@file@percent }
+\newlabel{tab:tdlambda}{{6}{12}{TD($\lambda $) ablation on learned \texttt {BASDeepRollout}. ``Base'' is the original learned policy--value setup; ``TD($\lambda $)'' uses separate policy/value networks, Adam, and TD($\lambda $) relabeling. Entries report the best learned-BAS point per environment from each run}{table.6}{}}
+\gdef \@abspage@last{12}

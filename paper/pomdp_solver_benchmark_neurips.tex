@@ -1,0 +1,513 @@
+\documentclass[10pt,twocolumn]{article}
+
+% Prefer an installed NeurIPS style; otherwise compile with a standard fallback.
+\makeatletter
+\newif\ifneuripsstyle
+\neuripsstylefalse
+\IfFileExists{neurips_2023.sty}{%
+  \usepackage[preprint]{neurips_2023}\neuripsstyletrue
+}{%
+  \IfFileExists{neurips_2024.sty}{%
+    \usepackage[preprint]{neurips_2024}\neuripsstyletrue
+  }{%
+    \IfFileExists{neurips_2025.sty}{%
+      \usepackage[preprint]{neurips_2025}\neuripsstyletrue
+    }{%
+      % Fallback formatting so the document still compiles locally.
+      \usepackage[margin=0.75in]{geometry}
+    }%
+  }%
+}
+\makeatother
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\raggedbottom
+\setlength{\columnsep}{0.22in}
+
+\title{A Compute-Aware Benchmark of POMDP Solvers: \\
+Performance--Compute Trade-offs Across Environments}
+
+\author{%
+  Ioan Hedea \\
+  Delft University of Technology (TU Delft)
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a controlled benchmark of classical and modern POMDP solvers, spanning exact, point-based, and online simulation methods. The benchmark evaluates solver behavior across standard and custom environments with matched computational budgets and reports discounted return, runtime per step, total online compute per episode, and belief-divergence estimates for particle-based methods. A consistent pattern emerges: PBVI dominates the small structured domains, while online methods become more competitive in the harder settings, but at much higher online compute cost. To interpret that crossover, we formulate a compute-allocation view of solvers and advance a testable structural conjecture, formalized through a proxy complexity score, that environments with compact reusable belief structure favor offline preallocation whereas higher branching-adjusted uncertainty shifts the Pareto frontier toward adaptive online search. The benchmark also sharpens an important cautionary point: even with 100 episodes per setting, the merge environments retain very wide confidence intervals, so solver comparisons there remain statistically fragile. As a secondary method study, we instantiate the compute-allocation view as \texttt{BASDeepRollout}; in the learned setting it becomes competitive in the harder reactive-planning regime exemplified by DrivingMerge, but does not overturn the broader structure-dependent picture. Rather than supporting a single overall winner, the paper argues that solver choice is fundamentally a performance--compute trade-off conditioned on environment structure.
+\end{abstract}
+
+\section{Introduction}
+
+\subsection{Motivation}
+Sequential decision-making under uncertainty is central to robotics, planning, diagnosis, and safety-critical AI. POMDPs provide a principled formulation \citep{kaelbling1998planning}, but practical solver behavior strongly depends on environment structure, belief representation, and available compute.
+
+\subsection{Problem}
+Most empirical comparisons still suffer from at least one of three limitations: they focus on a single benchmark, report reward without compute, or omit enough protocol detail to make reproduction difficult. This is especially problematic for POMDPs, where the best-performing solver in one domain may be impractical in another once online latency is taken seriously. Our goal in this paper is therefore benchmark-first: not to argue for a new universal solver, but to compare solver regimes under matched compute and shared implementations, and to ask whether environment structure helps explain the observed offline--online crossover.
+
+\subsection{Contributions}
+We provide:
+\begin{itemize}
+    \item Joint reporting of return, online compute, and belief-quality diagnostics, so solver comparison is framed as a performance--compute trade-off rather than a reward-only leaderboard.
+    \item A multi-environment benchmark spanning both canonical and custom domains, including harder settings that expose crossover points between offline and online solver classes.
+    \item A reproducible benchmarking harness with saved artifacts, consistent seed control, and explicit skip handling for unsupported configurations.
+    \item A structural crossover conjecture, together with a simple proxy score, for interpreting when reusable offline structure should dominate adaptive online search.
+    \item Empirical analysis of failure modes and budget non-monotonicity, including a persistent POMCP failure on Tiger and regimes where more computation does not buy better return.
+    \item A secondary compute-allocation method study showing that deeper allocation, rollout gating, and leaf-value bootstrapping can help in harder online-planning regimes, but do not yet support a universal method claim.
+\end{itemize}
+
+\section{Background}
+
+\subsection{POMDP Formulation}
+A POMDP is defined as
+\begin{equation}
+\mathcal{P}=(\mathcal{S},\mathcal{A},\mathcal{O},T,Z,R,\gamma,b_0),
+\end{equation}
+where $\mathcal{S}$ is the state set, $\mathcal{A}$ actions, $\mathcal{O}$ observations, $T(s'\mid s,a)$ transition dynamics, $Z(o\mid s',a)$ observation model, $R(s,a)$ reward, $\gamma\in(0,1)$ discount factor, and $b_0$ the initial belief.
+Belief updates follow Bayes filtering:
+\begin{equation}
+ b'(s') \propto Z(o\mid s',a)\sum_{s\in\mathcal{S}} T(s'\mid s,a)b(s).
+\end{equation}
+Finite-horizon exact dynamic programming for POMDPs follows the classical piecewise-linear convex structure \citep{smallwood1973optimal,littman1994witness}.
+
+\subsection{Solver Categories}
+We evaluate methods from four categories:
+\begin{itemize}
+    \item \textbf{Exact:} finite-horizon tabular value iteration with piecewise-linear convex value representations.
+    \item \textbf{Offline approximate:} PBVI with sampled belief points \citep{pineau2003pbvi}.
+    \item \textbf{Online simulation:} POMCP and a DESPOT-style sparse-scenario planner \citep{silver2010pomcp,somani2013despot}.
+    \item \textbf{Adaptive online variant:} AdaOPS-style entropy-adaptive simulation budgeting.
+\end{itemize}
+
+\subsection{Solver as a Budget-Constrained Policy Mapping}
+A POMDP solver can be viewed as a mapping from a problem instance and a computational budget to a policy. Let
+\(
+P=(\mathcal{S},\mathcal{A},\mathcal{O},T,Z,R,\gamma,b_0)
+\)
+denote a POMDP, and let $B$ denote a computational budget such as the number of belief points, particles, scenarios, or simulations. A solver then induces a policy
+\begin{equation}
+\pi_B = \mathcal{S}(P,B).
+\end{equation}
+
+An even more structural view is to treat the solver as a compute-allocation policy over reachable belief space. Let $\mathcal{B}_{\mathrm{reach}}(P)$ denote the set of beliefs reachable under the POMDP dynamics. A solver with budget $B$ induces an allocation rule
+\begin{equation}
+a_B : \mathcal{B}_{\mathrm{reach}}(P) \to \mathbb{R}_{\ge 0},
+\quad
+\int_{\mathcal{B}_{\mathrm{reach}}(P)} a_B(b)\, db \le B,
+\end{equation}
+which describes where computation is spent. The resulting policy can then be viewed as
+\begin{equation}
+\pi_B = \Gamma(P, a_B),
+\end{equation}
+for some planner-dependent policy extraction operator $\Gamma$. Offline methods preallocate computation and reuse it at run time, online methods adapt allocation around the current belief, and adaptive variants modulate that spending using uncertainty statistics. This framing shifts the comparison from named solvers to compute-allocation strategies, evaluated jointly by expected return $R(\pi_B)$ and compute cost $C(\pi_B)$:
+\begin{equation}
+\max_{\mathcal{S},B} \quad R(\pi_B)
+\quad \text{s.t.} \quad C(\pi_B) \le \kappa,
+\end{equation}
+for a deployment-specific compute allowance $\kappa$.
+
+\subsection{A Compute-Allocation Method Instantiation}
+The same abstraction can also be instantiated as a concrete online planner. In the method study below, we use a belief-adaptive search variant called \texttt{BASDeepRollout}. It modifies a POMCP-style planner in two places. First, it replaces uniform action priors with a belief-conditioned allocation rule
+\begin{equation}
+p_\theta(a \mid b,d)=\mathrm{Normalize}\!\left((1-\lambda_d)u(a)+\lambda_d\,\phi_\theta(a,b)\right),
+\end{equation}
+where $u(a)$ is the uniform prior over actions and $\lambda_d=\lambda_0\rho^d$ decays the allocation strength with tree depth $d$. In the implemented method,
+\begin{equation}
+\phi_\theta(a,b)=
+\begin{aligned}[t]
+&w_r \bar Q_1(a,b)+w_s \bar H_S(a,b)\\
+&+w_o \bar H_O(a,b)+\eta_{\mathrm{env}}(a,b),
+\end{aligned}
+\end{equation}
+where $\bar Q_1(a,b)$ is a normalized one-step reward proxy, $\bar H_S(a,b)$ and $\bar H_O(a,b)$ are normalized predictive state and observation entropies, and $\eta_{\mathrm{env}}(a,b)$ is a lightweight environment-specific shaping term. We use $\rho=0.75$, with $\lambda_0=0.12$ for RockSample-style domains and $\lambda_0=0.16$ for Tiger, the merge tasks, and MedicalDiagnosis, so the bias is strongest near the root and fades with depth.
+
+Second, \texttt{BASDeepRollout} adapts rollout effort to belief difficulty using a guarded signal rather than raw entropy alone. Let
+\begin{equation}
+s(b)=g(P,b)\left(0.45\,\Delta(b)+0.35\,V(b)+0.20\,R(b)\right),
+\end{equation}
+where $\Delta(b)$ is immediate action-value disagreement, $V(b)$ is a value-of-information proxy based on predictive observation entropy, and $R(b)$ is a catastrophe-risk term. The guardrail $g(P,b)\in[0,1]$ is implemented as a clipped product of state-size, belief-support, and environment factors, so rollout effort is reduced on tiny or support-collapsed beliefs and in highly structured domains such as Tiger. Concretely, the implementation downweights very small state spaces ($0.45$ when $|\mathcal{S}|\le 4$, $0.65$ when $|\mathcal{S}|\le 8$), sharp beliefs (support-size factors $0.60/0.80/1.0$ and peak-belief factor $0.70$ when $\max_s b(s)\ge 0.8$), and especially structured environments such as Tiger ($0.55$) and MedicalDiagnosis ($0.85$). The rollout horizon is then
+\begin{equation}
+H_{\mathrm{roll}}(b)=H_{\min}+\mathrm{round}\!\left(H_{\mathrm{extra}}\,\alpha(P)\,s(b)\right),
+\end{equation}
+with $H_{\min}=3$, $H_{\mathrm{extra}}=4$, and environment scale $\alpha(P)\in\{0.55,1.10,1.05,0.85\}$ for Tiger, RockSample, DrivingMerge, and MedicalDiagnosis respectively. Intuitively, the final leaf term is just a cheap two-step surrogate so truncated search does not back up an uninformative terminal value. The planner therefore uses a one-step leaf bootstrap
+\begin{equation}
+\hat V_{\mathrm{leaf}}(b)=
+\max_a \Bigl[
+Q_1(a,b)+\gamma \sum_o p(o\mid b,a)
+\max_{a'} Q_1(a',\tau(b,a,o))
+\Bigr],
+\end{equation}
+so that shallow search still receives a belief-aware terminal estimate. The method therefore applies the compute-allocation view to action selection, rollout depth, and leaf evaluation. In the learned variant studied below, the same structure is retained but the action prior and leaf value are supplied by a compact policy--value network trained from teacher search traces, letting us separate the effect of compute allocation from the quality of the learned guidance driving it.
+
+\section{Related Work}
+Classical POMDP planning established the belief-state view and the piecewise-linear convex structure exploited by exact finite-horizon methods \citep{kaelbling1998planning,smallwood1973optimal,littman1994witness}. As exact methods became difficult to scale, point-based approximations such as PBVI and SARSOP provided practical offline compromises by restricting backups to sampled or optimally reachable beliefs \citep{pineau2003pbvi,kurniawati2008sarsop}. In parallel, online planning developed into a substantial line of work in its own right: AEMS and related heuristic-search methods explicitly refined approximate value functions online \citep{ross2007aems,ross2008online}, POMCP made Monte Carlo tree search practical in large discrete POMDPs \citep{silver2010pomcp}, and DESPOT and IS-DESPOT improved sparse-scenario search and sampling efficiency \citep{somani2013despot,luo2019isdespot}. More recent variants such as POMCPOW extend Monte Carlo planning to continuous observation settings \citep{sunberg2017pomcpow}. A separate thread embeds planning structure inside learned models or differentiable architectures, for example QMDP-Net and deep variational RL for partially observable control \citep{karkus2017qmdpnet,igl2018dvrl}.
+
+Our goal is not to survey all modern partial-observability methods or to claim a new universal solver. Instead, we study a narrower question that is often obscured in prior comparisons: how solver families trade return against online compute when they are run through a shared harness, matched against the same environment implementations, and evaluated with explicit uncertainty reporting. For that reason, the benchmark centers classical planning regimes that can be compared cleanly under a common tabular model and common compute accounting. Learned-model methods remain important context for external validity, and POMCPOW marks an especially relevant next baseline once the suite includes more continuous-observation tasks, but neither is yet part of the main matched benchmark reported here.
+
+\section{Experimental Setup}
+
+\subsection{Solvers}
+The benchmark suite includes Exact Value Iteration, PBVI, POMCP, DESPOT, an optional AdaOPS-style adaptive online variant, and an optional Julia bridge for SARSOP \citep{kurniawati2008sarsop}. This selection is intentional: it emphasizes solver families that can be compared under a shared tabular model, a shared environment API, and a common notion of online compute. All methods are evaluated through the same Python harness, which lets us attribute observed differences to solver behavior rather than to inconsistent environment implementations. SARSOP is included for completeness, but it is not treated as a resolved headline baseline because its Julia/POMDPX toolchain did not execute robustly across the full suite; those failures are preserved as explicit \texttt{skipped} records in the raw artifacts rather than hidden from the report.
+
+\subsection{Environments}
+\noindent The environments are chosen to probe solver regimes rather than to maximize raw benchmark count.
+
+\textbf{Tiger.} A canonical two-state listening/opening problem that stresses information gathering under sparse observations and severe wrong-door penalties.
+
+\textbf{RockSample.} The 4x3 instance is a structured information-gathering task with movement, checking actions, and sampling decisions. It increases state and observation complexity relative to Tiger while preserving tabular tractability.
+
+\textbf{DrivingMerge (custom).} A partially observable merge-control task with hidden gap size, noisy sensor readings, and actions \texttt{wait}, \texttt{slow\_merge}, and \texttt{merge}. Rewards penalize collision and excessive waiting while incentivizing safe merge completion.
+
+\textbf{MedicalDiagnosis (custom).} A sequential test-and-stop problem with latent health severity, costly information-gathering actions (blood test, imaging), and terminal diagnosis actions. It captures practical trade-offs among test cost, delay risk, and misdiagnosis penalties.
+
+\textbf{Harder optional settings.} We additionally support a larger RockSample instance (\texttt{RockSample(5,4)}) and a noisier merge sensor variant (\texttt{DrivingMergeNoisy}) to stress scalability and robustness.
+
+\subsection{Belief Budget}
+We define \emph{belief budget} as the primary family-specific compute knob used for matched comparison, mapped by solver type:
+\begin{itemize}
+    \item POMCP/DESPOT: number of particles/scenarios.
+    \item PBVI: number of belief points.
+    \item Exact/SARSOP variants: budget-insensitive in online execution (single budget setting reported).
+\end{itemize}
+The goal is not to claim that these budgets are identical across solver families in every algorithmic sense, but to expose how each family trades off performance against compute as its main approximation budget changes. Evaluated values: $\{64,128,256,512\}$.
+
+\subsection{Metrics}
+\textbf{Performance:}
+\begin{itemize}
+    \item Discounted return (reported in the paper as mean $\pm$ 95\% confidence interval)
+\end{itemize}
+\textbf{Compute:}
+\begin{itemize}
+    \item Runtime per step (ms, reported as mean $\pm$ 95\% confidence interval)
+    \item Total compute per episode (s, reported as mean $\pm$ 95\% confidence interval)
+\end{itemize}
+\textbf{Belief quality (where available):}
+\begin{itemize}
+    \item Jensen--Shannon belief divergence between exact and particle beliefs
+\end{itemize}
+
+\subsection{Protocol}
+Unless otherwise noted, we run 100 episodes per solver--environment--budget setting, using fixed seed generation from a shared base seed to ensure reproducibility and paired comparability. The extended study covers 102 solver--environment--budget combinations in total, of which 100 complete successfully and 2 are recorded as explicit skips because exact value iteration exceeds the RockSample state cap. All solvers are evaluated under the same environment dynamics and reward models. The primary benchmark claim rests on Tiger, RockSample(4,3), DrivingMerge, and MedicalDiagnosis; the larger RockSample(5,4) and noisier DrivingMergeNoisy variants are used as stress-test extensions to expose scalability and robustness effects beyond the core suite. Figures and headline tables report 95\% confidence intervals, while the CSV artifacts retain standard deviations for downstream analysis.
+
+\subsection{Implementation Details and Reproducibility}
+The benchmark is implemented as a shared Python harness with solver adapters layered over a common tabular environment interface. Each run emits machine-readable CSV and JSON summaries, and all plots in the paper are regenerated from those saved artifacts rather than from ad hoc notebook state. Confidence intervals are computed as $1.96\,\sigma/\sqrt{n}$ with $n=100$ episodes. To reduce hidden variance, solver evaluations use the same base-seed schedule, identical reward definitions, and identical environment dynamics. Optional components are handled explicitly rather than silently omitted: the Julia SARSOP bridge is isolated behind a separate adapter, and unsupported exact-planning configurations are recorded as \texttt{skipped} when the state cap is exceeded. This design makes the benchmark easier to audit, rerun, and extend, while also preserving negative integration results that would otherwise disappear from the paper narrative. Appendix Table~\ref{tab:budgetwinners} therefore exposes the best solver at every tested budget rather than only the headline winners.
+
+\subsection{Benchmark Design Snapshot}
+Table~\ref{tab:design} summarizes the role each environment plays in the study. This matters because the benchmark is not intended as a leaderboard over arbitrary tasks; it is meant to probe distinct solver failure modes. Tiger isolates information gathering under catastrophic penalties, RockSample emphasizes scalable information acquisition, the merge tasks stress reactive planning under noisy sensing, and MedicalDiagnosis tests whether a solver can trade off delayed information gain against irreversible terminal decisions.
+
+\begin{table}[t]
+\centering
+\caption{Benchmark design summary.}
+\label{tab:design}
+\scriptsize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.22\columnwidth} >{\raggedright\arraybackslash}p{0.31\columnwidth} >{\raggedright\arraybackslash}p{0.31\columnwidth}@{}}
+\toprule
+Environment & Pressure point & Why it matters \\
+\midrule
+Tiger & Sparse information, severe penalties & Canonical sanity check \\
+RockSample\allowbreak(4,3) & Exploration structure & Small tabular benchmark \\
+RockSample\allowbreak(5,4) & Larger branching structure & Scaling stress test \\
+DrivingMerge & Reactive uncertainty & Noisy-control task \\
+DrivingMerge\allowbreak Noisy & Observation corruption & Robustness stress test \\
+Medical diagnosis & Test-vs-stop trade-off & Costly sensing decisions \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Results}
+
+\subsection{Scalability Curves}
+Figure~\ref{fig:scaling} summarizes the expanded six-environment 300-episode budget sweep with \texttt{SARSOPJulia} included, while \texttt{BASDeepRolloutLearned} appears where learned checkpoints are available. The main signal is no longer a simple ``small offline, large online'' split. Instead, strong offline alpha-vector methods remain dominant across the structured tabular suite: \texttt{SARSOPJulia} or PBVI lead Tiger, both RockSample variants, and MedicalDiagnosis. The merge tasks remain the clearest exception. There PBVI stays strongly negative, while the best online or learned-search points move closer to zero and occasionally above it, but the confidence intervals are still wide enough that the ranking remains open. The learned-BAS overlay is still informative, but mainly diagnostically. Its broadly flat scaling where it is defined suggests that the current bottleneck is representational rather than computational: the learned planner receives broadly similar guidance regardless of how many simulations it is allowed to run, so additional search cannot recover value that the model is not encoding.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{../pomdp_benchmarks/results/main_300ep_sarsop/scaling_curve_ci95.png}
+    \caption{Return scaling from the 300-episode expanded benchmark with \texttt{SARSOPJulia} included and \texttt{BASDeepRolloutLearned} shown where learned checkpoints exist. Each panel reports mean discounted return with 95\% confidence intervals for one environment and budgets $64/128/256/512$ (budget-invariant solvers appear at a single point). The main benchmark pattern is that strong offline alpha-vector methods remain competitive much farther into the hard tabular regime than a raw size-based story would suggest; the learned-BAS curves remain secondary diagnostics rather than central benchmark winners.}
+    \label{fig:scaling}
+\end{figure*}
+
+\subsection{Return--Compute Pareto Trade-off}
+Figure~\ref{fig:pareto} complements the budget sweeps by showing return-versus-compute scatter plots with per-environment Pareto frontiers. Tiger, RockSample(4,3), MedicalDiagnosis, and now RockSample(5,4) all tell the same broader benchmark story: the strongest offline points sit far to the left and above the online methods, meaning they achieve higher return at dramatically lower online compute. With \texttt{SARSOPJulia} in the comparison, even the larger RockSample instance no longer looks like an online-planning win. That is an important update to the paper's structural framing. The merge tasks remain the more plausible online-favoring regime: PBVI is strongly negative there, while the strongest non-dominated frontier points come from DESPOT, AdaOPS, or learned BAS. Against that backdrop, \texttt{BASDeepRolloutLearned} is best read as a supporting probe: it does not replace strong offline baselines on structured tasks, but it becomes competitive exactly in the regime where offline structure reuse weakens.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{../pomdp_benchmarks/results/main_300ep_sarsop/pareto_return_vs_compute_ci95.png}
+    \caption{Return versus compute Pareto frontiers for the expanded 300-episode benchmark with \texttt{SARSOPJulia}. Compute is measured as episode-level online compute in seconds. Error bars show 95\% confidence intervals, each panel uses a log compute axis, and dashed frontiers mark non-dominated solver--budget choices within an environment. The updated figure shows that offline alpha-vector methods dominate most of the tabular suite, while the merge tasks remain the clearest unresolved region in which online or learned search can become competitive.}
+    \label{fig:pareto}
+\end{figure*}
+
+\subsection{Key Quantitative Snapshot}
+Table~\ref{tab:best} summarizes best mean return per environment from the 300-episode expanded run (132 combinations total; 122 completed; 10 skipped, including exact-state caps on the RockSample variants and missing learned-BAS checkpoints for RockSample(5,4) and DrivingMergeNoisy). Rows marked \emph{Open} remain statistically unresolved at the current sample count. The table should be read as a regime summary rather than as a definitive ranking: the most important signal is which solver family occupies the best-return row in each environment, together with whether that row is actually resolved.
+
+\begin{table*}[t]
+\centering
+\caption{Best observed mean return per environment from the 300-episode expanded run (reported as mean $\pm$ 95\% confidence interval). Rows marked ``Open'' have 95\% confidence intervals overlapping zero and therefore remain statistically unresolved at the current sample count.}
+\label{tab:best}
+\small
+\begin{tabular}{l l r r r r l}
+\toprule
+Environment & Solver & Budget & Return ($\mu\pm\mathrm{CI}_{95}$) & Step ms ($\mu\pm\mathrm{CI}_{95}$) & Episode sec ($\mu\pm\mathrm{CI}_{95}$) & Status \\
+\midrule
+Tiger & SARSOPJulia & 64 & $10.88\pm2.67$ & $0.0022\pm0.0000$ & $0.000032\pm0.000001$ & Resolved \\
+RockSample(4,3) & SARSOPJulia & 64 & $16.13\pm0.65$ & $0.0048\pm0.0004$ & $0.000060\pm0.000005$ & Resolved \\
+RockSample(5,4) & SARSOPJulia & 64 & $16.77\pm0.64$ & $0.1787\pm0.0032$ & $0.002942\pm0.000074$ & Resolved \\
+DrivingMerge & BASDeepRolloutLearned & 128 & $4.40\pm7.70$ & $14.2876\pm0.6965$ & $0.041099\pm0.003806$ & Open \\
+DrivingMergeNoisy & DESPOT & 128 & $-5.23\pm8.53$ & $4.4440\pm0.0161$ & $0.010680\pm0.000842$ & Open \\
+MedicalDiagnosis & PBVI & 512 & $23.12\pm2.14$ & $0.0082\pm0.0002$ & $0.000022\pm0.000001$ & Resolved \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\caption{Representative offline precomputation times measured as a cold planner reset on the benchmark machine. These setup costs are not included in the online step/episode compute metrics reported elsewhere in the paper.}
+\label{tab:offlinecost}
+\scriptsize
+\begin{tabular}{@{}p{0.24\columnwidth} p{0.40\columnwidth} r@{}}
+\toprule
+Environment & Solver (budget) & Sec \\
+\midrule
+Tiger & ExactValueIteration (64) & 0.58 \\
+Tiger & PBVI (256) & 5.38 \\
+MedicalDiagnosis & ExactValueIteration (64) & 7.05 \\
+MedicalDiagnosis & PBVI (128) & 3.73 \\
+RockSample(4,3) & PBVI (512) & 15.85 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Key Observations}
+\paragraph{Observation 1: No universal solver.}
+No single method dominates all environments. As visible in Figure~\ref{fig:scaling} and Table~\ref{tab:best}, \texttt{SARSOPJulia} or PBVI lead Tiger, both RockSample variants, and MedicalDiagnosis, while the merge tasks remain unresolved and much less favorable to offline structure reuse. The strongest mean on DrivingMerge comes from learned BAS at budget $128$, while DrivingMergeNoisy is best on mean return under DESPOT at budget $128$, but both remain statistically open.
+
+\paragraph{Observation 2: Offline vs online trade-off.}
+Offline alpha-vector methods are stronger than the earlier draft suggested. The Tiger, RockSample(4,3), MedicalDiagnosis, and RockSample(5,4) Pareto panels in Figure~\ref{fig:pareto} all place the strongest offline points far to the left of the online methods while also matching or exceeding their return. The most important update is RockSample(5,4): once \texttt{SARSOPJulia} is included, the best result is no longer an online-planning win but an offline one ($16.77\pm0.64$ at negligible online compute relative to the multi-second online planners). Table~\ref{tab:offlinecost} still shows the counterweight to that story: low online latency can hide substantial one-time setup cost for offline planning, reaching about $15.85$ seconds for PBVI on RockSample(4,3) at budget 512.
+
+\paragraph{Observation 3: Compute--performance coupling.}
+Increasing budget does not uniformly improve return; several solver--environment pairs show non-monotonic gains or early saturation. Compute, however, tends to rise reliably for online planners. This asymmetry is exactly why return-only evaluation is misleading: larger budgets can buy better performance, but sometimes only at a steep and practically unacceptable online cost.
+
+Appendix Table~\ref{tab:budgetwinners} makes this concrete. On RockSample(5,4), for instance, POMCP is nearly flat in return across budgets 64--512 (roughly $8.6$ to $9.0$) while still consuming about $2.15$--$2.69$ seconds of online compute per episode, and AdaOPS costs roughly $5.49$--$5.87$ seconds per episode for returns clustered around $8.0$--$8.5$. By contrast, the strongest offline points remain orders of magnitude cheaper online. That is exactly the kind of budget pathology that a reward-only benchmark would miss.
+
+\paragraph{Observation 4: Environment structure matters.}
+MedicalDiagnosis and both RockSample variants favor structured offline planning, where belief compression and reusable value structure are advantageous; this is visible both in Figure~\ref{fig:scaling} and in the left-shifted \texttt{SARSOPJulia}/PBVI points of Figure~\ref{fig:pareto}. That is precisely why the new RockSample(5,4) result matters: larger state support alone is not enough to force an online-search crossover. The merge tasks appear to be the more plausible crossover candidates, because their useful beliefs seem less reusable and more timing-sensitive, but they remain statistically noisy even after 300 episodes.
+
+\paragraph{Observation 5: Belief divergence trends are measurable.}
+For particle-based solvers, Jensen--Shannon divergence between exact and particle beliefs is directly tracked, but it is not a simple proxy for control performance. Lower divergence usually means the particle approximation is becoming more faithful, yet the benchmark continues to show that accurate belief tracking is only one ingredient of good control. Hard environments can have relatively low divergence at large budgets while still exhibiting poor control because rollout quality, branching allocation, or horizon truncation, rather than belief approximation alone, becomes the bottleneck.
+
+\paragraph{Observation 6: Tiger exposes an important POMCP failure mode.}
+The strongest anomaly in the study remains POMCP's poor performance on Tiger, a canonical benchmark where one might expect online search to be competitive. In the Tiger panels of Figures~\ref{fig:scaling} and \ref{fig:pareto}, POMCP remains strongly negative across all tested budgets (roughly $-75$ to $-83$ mean return), while \texttt{SARSOPJulia} and PBVI remain positive. This failure therefore survives the larger-sample rerun rather than washing out with more episodes. In our setting the underperformance is consistent with a combination of factors: Tiger is tiny and highly structured, so offline methods can exploit its geometry almost perfectly; wrong-door actions are catastrophically costly; and Monte Carlo search with approximate particle beliefs and simple rollout policies can be brittle when a few poor branches dominate value estimates. Rather than dismissing this as a mere implementation artifact, we view it as a useful reminder that canonical benchmarks can still reveal where an online method is mismatched to the structure of the problem.
+
+\paragraph{Observation 7: More episodes clarify, but do not fully resolve, the merge tasks.}
+The additional episodes make the merge conclusions more honest. On DrivingMerge, the best observed mean is now learned BAS at budget $128$ with $4.40\pm7.70$, while DrivingMergeNoisy is best on mean return under DESPOT at budget $128$ with $-5.23\pm8.53$. Those intervals are narrower than before, but they still overlap zero and several competing methods. That is why both merge rows are marked \emph{Open} in Table~\ref{tab:best}, and why the DrivingMerge panels in Figures~\ref{fig:scaling} and \ref{fig:pareto} should be read as statistically fragile comparisons rather than as resolved leaderboards.
+This is not merely a caveat. It is itself a benchmark finding: the merge regime is exactly where the offline--online crossover is most interesting, and also where the current reward design makes clean solver separation hardest to resolve. That combination is scientifically inconvenient, but substantively informative.
+The CI arithmetic also makes the next step concrete. Holding variance fixed at the current estimates, shrinking the best DrivingMerge row from about $\pm 7.70$ to $\pm 7.5$ would require about $317$ episodes, while pushing it to about $\pm 5$ would require roughly $712$. For DrivingMergeNoisy, the current best row at about $\pm 8.53$ would require about $388$ episodes to reach $\pm 7.5$ and about $873$ to reach $\pm 5$. In other words, even after 300 episodes, a truly tight merge comparison still means a few hundred more episodes, not a token extension.
+
+\subsection{Secondary Method Study: Learned \texttt{BASDeepRollout}}
+To test the compute-allocation view as an actual method rather than only as an explanatory lens, we evaluated a learned version of \texttt{BASDeepRollout} on the primary four-environment suite. The learned variant trains a compact policy--value checkpoint for each environment from teacher search traces using three rounds of dataset aggregation (100 total collection episodes at teacher budget $128$), and then plugs that checkpoint into the same deep-allocation, rollout-gating, and leaf-evaluation machinery. We treat this as a secondary method study rather than as the paper's primary claim, because the method is intentionally evaluated as a diagnostic extension to the benchmark rather than as a fully tuned standalone solver family.
+
+The one clearly positive BAS result is still DrivingMerge: PBVI remains strongly negative there, while the learned BAS planner reaches a positive mean return of $4.40\pm7.70$ at budget $128$ and lies on or near the Pareto frontier. That is the regime in which adaptive online guidance is most plausible in the present suite. The broader diagnostic signal, however, is the shape of the scaling curve. \texttt{BASDeepRolloutLearned} remains fairly flat from budget $64$ to $512$ across the environments where checkpoints exist, which implies that the limiting factor is the learned representation rather than search depth itself: the planner is effectively getting similar guidance regardless of how many simulations it is allowed to run, so extra compute cannot recover what the model is not representing.
+
+The environment-wise pattern is otherwise mixed but interpretable. On Tiger, the learned method improves dramatically over plain POMCP, but still remains below \texttt{SARSOPJulia}/PBVI and never becomes positive on average. On RockSample(4,3), it stays in roughly the same regime as POMCP and DESPOT but remains far behind the best offline alpha-vector methods. On MedicalDiagnosis, it is clearly viable and outperforms DESPOT and POMCP, yet PBVI still leads. The point is therefore not that learned BAS beats the offline baselines everywhere; it is that learned compute allocation begins to matter exactly where the structured offline baselines break down.
+
+The expanded suite also makes the current scope of the BAS study more explicit: no learned checkpoints are yet available for RockSample(5,4) or DrivingMergeNoisy, so the learned-BAS comparison remains a four-environment diagnostic rather than a full six-environment benchmark competitor.
+
+Two diagnostic patterns reinforce this reading. First, Tiger has the lowest policy KL ($0.333$), yet final control remains weak, which suggests that imitation fidelity alone is not enough when the teacher prior is itself a poor rollout guide. Second, RockSample(4,3) has the highest policy KL ($0.955$), which suggests that the compact learned model is missing a highly conditional action map even in a well-structured domain. Taken together with the flat scaling curves, these diagnostics point to model quality, not search budget, as the main current limitation.
+
+We also ran a follow-up ablation that replaced the shared policy--value trunk with separate policy and value networks, switched optimization to Adam, and relabeled value targets between aggregation rounds with TD($\lambda$) bootstrapping. The main effect was on value learning rather than across-the-board control: raw value MSE dropped sharply on RockSample(4,3) (about $28.6 \rightarrow 6.1$) and DrivingMerge (about $4261.9 \rightarrow 2084.3$), and in the earlier ablation run the DrivingMerge learned-BAS point improved slightly while using slightly less online compute ($6.92\pm13.02$ at $0.037$\,s $\rightarrow 7.40\pm13.11$ at $0.033$\,s). The gains were not uniform across environments, which again suggests that the remaining bottleneck is not only value-target variance but also policy-prior quality or belief-space coverage. Appendix Table~\ref{tab:tdlambda} reports the corresponding environment-wise ablation summary.
+
+The main methodological lesson is therefore narrower and stronger than a generic ``BAS wins'' claim. Dominance by \texttt{SARSOPJulia}/PBVI on Tiger and the RockSample domains is expected and not the interesting comparison. The real algorithmic signal is the DrivingMerge case, where a learned compute-allocation policy becomes competitive precisely when offline reusable structure weakens. Even there, the evidence is best read as supporting and diagnostic rather than as a standalone method victory.
+
+\begin{table}[t]
+\centering
+\caption{Representative learned \texttt{BASDeepRollout} results. Entries report best mean return $\pm$ 95\% confidence interval and episode-level online compute; ``Best baseline'' is the strongest non-BAS result from the same matched run.}
+\label{tab:basdr}
+\scriptsize
+\begin{tabular}{@{}p{0.22\columnwidth} p{0.33\columnwidth} p{0.33\columnwidth}@{}}
+\toprule
+Environment & Best learned BAS & Best baseline \\
+\midrule
+RockSample\allowbreak(4,3) & Budget 128: $8.27\pm0.43$, $0.992$\,s & SARSOP-64: $16.13\pm0.65$, $0.000$\,s \\
+DrivingMerge & Budget 128: $4.40\pm7.70$, $0.041$\,s & AdaOPS-256: $-3.73\pm8.53$, $0.079$\,s \\
+Medical\allowbreak Diagnosis & Budget 128: $18.42\pm2.66$, $0.038$\,s & PBVI-512: $23.12\pm2.14$, $0.000$\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Failure and Diagnostic Analysis}
+\paragraph{Tiger as a theory-of-failure case.}
+Tiger is the cleanest example in the benchmark of a domain where stronger belief approximation or more online simulation does not rescue a mismatched solver. PBVI remains decisively positive, exact value iteration is competitive, and the online methods perform much worse despite substantially higher action-selection cost. The domain is small, sharply structured, and dominated by catastrophic wrong-door penalties, so a few misallocated search branches can destroy value. This makes Tiger less interesting as a difficulty benchmark than as a compact failure case for online Monte Carlo planning under severe asymmetric penalties.
+
+\paragraph{Belief quality is diagnostic, not dispositive.}
+The belief-divergence calculation is still useful, but mainly as a diagnostic rather than a ranking rule. Lower divergence usually means the particle approximation is becoming more faithful, yet the benchmark shows that accurate belief tracking is only one ingredient of good control. When return saturates or degrades at larger budgets, the bottleneck appears to shift from belief approximation toward rollout quality, branching allocation, or the horizon at which simulation is effective. That is precisely why reporting reward, compute, and belief quality together is more informative than any one metric in isolation.
+
+\section{Discussion}
+
+\subsection{Why Differences Occur}
+The cleanest mechanistic explanation in the paper still comes from Tiger. As discussed in the failure analysis above, Tiger combines tiny state support, highly reusable value structure, and catastrophic asymmetric penalties. That combination rewards solvers that can encode the policy geometry offline and punishes online Monte Carlo planners when even a small number of poorly allocated simulations overvalue the wrong door. More generally, the same pattern extends farther across the benchmark than the earlier draft suggested. With \texttt{SARSOPJulia} included, offline alpha-vector planning remains strongest not only on Tiger and MedicalDiagnosis but also on both RockSample variants, including RockSample(5,4). That means raw size or branching burden alone is not enough to explain the crossover. Structure helps when value information can be reused repeatedly, while online methods become attractive only when realized uncertainty is rich enough that reactive search can recover information unavailable to a fixed offline approximation. In that sense, observation structure, belief approximation, and branching effects matter not as abstract categories, but through the concrete way they shift the balance between reusable offline policy structure and per-decision online search.
+
+The 300-episode rerun also highlights a second-order effect: increasing the sample count can change the confidence with which we tell the story, even when it does not dramatically change the winner table. The merge domains are the clearest example. Their mean rankings are informative, but the wide intervals show that these tasks are intrinsically volatile under the current reward design, so a careful paper should emphasize robustness and uncertainty rather than only the top row of the table.
+
+DrivingMergeNoisy helps make that point concrete. Its best observed mean remains negative even after the larger rerun, which suggests a regime where extra online search is still not converting noisy observations into reliably decision-relevant signal. That makes it a useful reminder that moving toward online planning does not by itself guarantee strong control when the observation process becomes substantially more corrupted.
+
+\subsection{A Testable Crossover Conjecture}
+The budget-constrained policy mapping view from Section~2 suggests a structural conjecture for when offline and online methods should exchange dominance. Let $\mathcal{B}_{\mathrm{reach}}(P)$ denote the reachable belief set of a POMDP, let $M(P)$ denote an effective measure of its reusable complexity (for example, covering number or approximation rank), and let $\chi(P)$ denote a branching-adjusted uncertainty index that grows with observation dispersion and effective lookahead burden. Informally, $M(P)$ is small when the belief geometry is compact and repeatedly reusable, while $\chi(P)$ is large when good decisions depend strongly on realized observation sequences.
+
+\paragraph{Conjecture 1 (Structural crossover).}
+For a fixed online compute allowance $\kappa$, there exists a threshold statistic
+\begin{equation}
+\Xi(P) = \frac{\chi(P)}{M(P)}
+\end{equation}
+such that offline methods are favored when $\Xi(P)$ is small, while online simulation methods become favored when $\Xi(P)$ is large. Equivalently, compact reusable belief structure pushes the optimum of
+\(
+\max_{\mathcal{S},B} R(\pi_B)\ \text{s.t.}\ C(\pi_B)\le\kappa
+\)
+toward offline policy construction, whereas high branching uncertainty pushes it toward adaptive online search.
+
+This should be read as a descriptive hypothesis about regime ordering under fixed compute, not as a theorem and not as a claim that one scalar completely determines solver performance. The present benchmark offers partial support for that reading, but also stronger falsification pressure than before: Tiger and MedicalDiagnosis are low-$\Xi$ domains in which offline methods dominate, yet even the higher-$\Xi$ RockSample(5,4) instance remains offline-favoring once \texttt{SARSOPJulia} is included. The merge tasks are still the environments most directionally consistent with an online-favoring regime, but their wide confidence intervals mean that the benchmark currently locates the crossover region more confidently than it resolves it. That tension is not just a weakness; it is also part of the empirical picture. The most interesting regime boundary is precisely the one where uncertainty in solver ranking remains highest.
+
+To make the conjecture testable, we also define a simple proxy version using only quantities available from the benchmark environments:
+\begin{equation}
+\widehat{M}(P) = \frac{1}{\log_2(1+|\mathcal{S}|)},
+\qquad
+\widehat{\chi}(P) = H \,\log_2(1+|\mathcal{A}|)\,\bar H_O,
+\end{equation}
+where $H$ is the finite planning horizon stored in the benchmark environment definition (Tiger $15$, MedicalDiagnosis $12$, DrivingMerge $18$, RockSample $\max(20,4n+6)$), and $\bar H_O$ is the mean predictive observation entropy at the initial belief:
+\begin{equation}
+\bar H_O = \frac{1}{|\mathcal{A}|}\sum_{a\in\mathcal{A}}
+\left[-\sum_{o\in\mathcal{O}} p(o\mid b_0,a)\log_2 p(o\mid b_0,a)\right],
+\end{equation}
+with
+\begin{equation}
+p(o\mid b_0,a)=\sum_{s'\in\mathcal{S}} Z(o\mid s',a)\sum_{s\in\mathcal{S}}T(s'\mid s,a)b_0(s).
+\end{equation}
+In other words, $\bar H_O$ measures the average entropy, in bits, of the one-step predictive observation distribution induced by each action at the initial belief. This gives a coarse empirical score
+\begin{equation}
+\widehat{\Xi}(P) = \frac{\widehat{\chi}(P)}{\widehat{M}(P)}.
+\end{equation}
+In the present environments, the resulting ordering is approximately Tiger ($33$), MedicalDiagnosis ($41$), DrivingMerge ($75$), DrivingMergeNoisy ($77$), RockSample(4,3) ($127$), and RockSample(5,4) ($230$). This proxy is intentionally crude. Its value is not that it fits every case, but that it is easy to compute and easy to falsify. The 300-episode benchmark makes its miss sharper than before: both RockSample instances are scored as harder than the merge tasks, yet strong offline alpha-vector methods remain best on them. That miss is informative because it points to exactly what the proxy fails to encode, namely reusable structure in the reachable belief geometry rather than raw state count alone.
+
+One plausible mechanism is that $\widehat{\chi}(P)$ over-penalizes nominal branching in RockSample while $\widehat{M}(P)$ underestimates how compressible its reachable beliefs actually are. RockSample has more actions, observations, and local branching than the merge tasks, so the proxy assigns it a larger raw complexity score. But many of those branches collapse back onto reusable belief motifs: movement and checking actions repeatedly generate similar local information-gathering subproblems, and once a rock is resolved its downstream effect is simple. That kind of repeated reachable-belief geometry is exactly what strong offline alpha-vector methods can amortize well. By contrast, the merge tasks look smaller under the crude proxy, yet their useful beliefs may be less reusable because action quality depends on transient timing distinctions under noisy sensing. In that sense the proxy misfires for a principled reason: it sees nominal uncertainty growth, but not whether that uncertainty lives on a reusable low-dimensional belief manifold.
+
+\subsection{Practical Implications}
+Solver selection should be conditional on deployment constraints:
+\begin{itemize}
+    \item If online latency is tight, precomputed offline policies are attractive.
+    \item If environment mismatch and uncertainty are high, online methods can be safer despite compute cost.
+    \item Budget sweeps are necessary because return and compute can decouple sharply.
+    \item Benchmark evidence should be preferred over a single headline win, because solver rankings shift materially with environment structure.
+\end{itemize}
+
+\subsection{Solver Selection by Regime}
+The benchmark also supports a more operational reading of the results. If the model class is trusted, the task will be solved many times, and online latency matters, strong offline alpha-vector methods are the best default in this suite: \texttt{SARSOPJulia} where available, and PBVI as the strongest fully internal approximate baseline. If the belief support becomes less reusable, online search becomes more compelling, but the merge tasks show that the choice among online solvers depends on what kind of compromise is acceptable. DESPOT often offers a more compute-efficient middle ground, AdaOPS can recover some value in the harder settings at substantial compute cost, and learned BAS becomes interesting precisely where PBVI degrades. This regime-based view is more useful than asking which solver is ``best'' in isolation.
+
+Another practical lesson is that variance itself should be treated as part of the benchmark outcome. The 300-episode rerun improves confidence, but it does not erase the fact that some domains remain noisy enough to blur rankings. For practitioners, that means solver choice should not be made from mean return alone. A solver with slightly lower mean return but much lower online cost, tighter confidence intervals, or more stable belief tracking may be preferable in deployment.
+
+The learned \texttt{BASDeepRollout} study adds one narrower lesson, but it remains secondary to the benchmark evidence. Its flat budget-response curves indicate that the current learned variant is limited more by representation quality than by search depth, and its clearest positive case is DrivingMerge, where PBVI degrades and adaptive online guidance starts to matter. The follow-up TD($\lambda$) ablation is consistent with that reading: the biggest gains appear in the noisier long-horizon regime rather than in the small structured domains.
+
+\section{Limitations}
+\begin{itemize}
+    \item Environment suite is still modest in size and tabular, so the strongest claims should be read as benchmark evidence for a structured crossover pattern rather than as a comprehensive solver ranking.
+    \item Baseline coverage is materially improved: a working Julia SARSOP bridge now gives a matched full-suite classical offline comparison on the tabular benchmark. The main remaining baseline gap is outside the current regime, especially the lack of a modern continuous-observation baseline such as POMCPOW.
+    \item No deep-learning POMDP baselines are included.
+    \item The learned \texttt{BASDeepRollout} study is incomplete on the harder pair of environments because learned checkpoints are not yet available for RockSample(5,4) or DrivingMergeNoisy.
+    \item Belief divergence is only available for particle-based methods.
+    \item Confidence intervals are reported from 300 episodes per setting, but the merge domains still exhibit wide intervals; under the current observed variances, reaching CI$_{95}$ widths near $\pm 7.5$ would still require roughly $317$ episodes for the best DrivingMerge row and about $388$ for the best DrivingMergeNoisy row, while widths near $\pm 5$ would require roughly $712$ and about $873$, respectively, assuming comparable variance.
+    \item Reported step-time and episode-compute metrics primarily reflect online action selection. Table~\ref{tab:offlinecost} partially quantifies representative offline setup cost, but it does not exhaust the full wall-clock burden of all offline hyperparameter or planning choices.
+    \item A materially stronger benchmark claim would require broader validation than is currently present: more environments beyond the tabular core, at least one continuous-observation setting with a POMCPOW-style comparison, and tighter resolution of the high-variance merge regimes.
+\end{itemize}
+
+\section{Threats to Validity}
+Several threats to validity remain. In terms of external validity, the benchmark focuses on tabular and discretized environments, so the resulting rankings may not transfer directly to continuous-state or learned-model settings. In terms of construct validity, our compute metrics emphasize online latency and episode compute, which is the right lens for deployment-oriented comparison but understate large offline precomputation costs for methods such as PBVI or exact value iteration. In terms of internal validity, we mitigate implementation bias by using a shared harness, matched seeds, and identical environment definitions, but solver-specific hyperparameters, rollout policies, and approximation choices can still affect outcomes, especially for online Monte Carlo methods. Finally, coverage is not perfectly uniform across solvers: exact value iteration is intentionally capped on larger RockSample instances, and optional Julia-based components may depend on external tooling. We therefore view the benchmark as a reproducible comparison of practical solver regimes rather than as a definitive universal ranking.
+
+\section{Conclusion}
+We show that POMDP solver performance is strongly environment-dependent and tightly coupled to computational budget. The paper's central contribution is therefore benchmark-oriented rather than leaderboard-oriented: it exposes a structure-dependent crossover in which strong offline methods dominate where value structure is compact and reusable, and continue to dominate farther into the hard tabular regime than the earlier draft suggested. With \texttt{SARSOPJulia} included, that dominance now extends through both RockSample variants as well as Tiger and MedicalDiagnosis. The remaining plausible crossover region is the merge family, where offline methods degrade, learned or online methods become more competitive, and the rankings still remain statistically open even after 300 episodes. A single-score ranking is therefore misleading. Robust comparison requires joint reporting of return, uncertainty, belief quality, and compute. The benchmarking framework makes those trade-offs explicit and reproducible across both standard and custom uncertainty settings, and the proposed $\Xi(P)$ framing remains useful primarily as a falsifiable structural lens whose current failures point directly to missing reachable-belief geometry.
+
+The learned \texttt{BASDeepRollout} study is best read as a supporting diagnostic rather than as the paper's central claim. Its main value in the present draft is to show that learned compute allocation becomes most plausible exactly in the regime where offline structure reuse weakens, while also revealing that the current learned instantiation is bottlenecked by representation quality rather than raw search budget. For the benchmark claim itself, the next validation step is now clearer: move beyond the current tabular core, add at least one continuous-observation setting with a POMCPOW-style comparison, complete learned-BAS coverage on the harder environments, and tighten the merge-task uncertainty with a few hundred more episodes rather than a token extension. Those upgrades would make the crossover story substantially more decisive while keeping the paper's main identity where its evidence is currently strongest.
+
+\appendix
+\section{Best Solver at Each Budget}
+
+\begin{table*}[t]
+\centering
+\caption{Best observed solver at each tested belief budget for every environment in the 300-episode run. Rows marked as best are selected by highest mean discounted return among completed configurations.}
+\label{tab:budgetwinners}
+\scriptsize
+\begin{tabular}{l r l r r}
+\toprule
+Environment & Budget & Best solver & Return ($\mu\pm\mathrm{CI}_{95}$) & Episode sec ($\mu\pm\mathrm{CI}_{95}$) \\
+\midrule
+Tiger & 64 & SARSOPJulia & $10.88\pm2.67$ & $0.000032\pm0.000001$ \\
+Tiger & 128 & PBVI & $10.82\pm2.62$ & $0.001250\pm0.000101$ \\
+Tiger & 256 & PBVI & $10.44\pm2.90$ & $0.002465\pm0.000135$ \\
+Tiger & 512 & PBVI & $10.00\pm3.12$ & $0.000083\pm0.000001$ \\
+\midrule
+RockSample(4,3) & 64 & SARSOPJulia & $16.13\pm0.65$ & $0.000060\pm0.000005$ \\
+RockSample(4,3) & 128 & BASDeepRolloutLearned & $8.27\pm0.43$ & $0.992003\pm0.060600$ \\
+RockSample(4,3) & 256 & POMCP & $8.23\pm0.32$ & $0.636107\pm0.058164$ \\
+RockSample(4,3) & 512 & PBVI & $15.20\pm0.74$ & $0.001088\pm0.000063$ \\
+\midrule
+RockSample(5,4) & 64 & SARSOPJulia & $16.77\pm0.64$ & $0.002942\pm0.000074$ \\
+RockSample(5,4) & 128 & POMCP & $8.78\pm0.53$ & $2.690148\pm0.196578$ \\
+RockSample(5,4) & 256 & PBVI & $12.11\pm0.84$ & $0.003577\pm0.000274$ \\
+RockSample(5,4) & 512 & AdaOPS & $8.54\pm0.53$ & $5.870800\pm0.410959$ \\
+\midrule
+DrivingMerge & 64 & BASDeepRolloutLearned & $-2.29\pm8.24$ & $0.041085\pm0.004016$ \\
+DrivingMerge & 128 & BASDeepRolloutLearned & $4.40\pm7.70$ & $0.041099\pm0.003806$ \\
+DrivingMerge & 256 & AdaOPS & $-3.73\pm8.53$ & $0.078726\pm0.007991$ \\
+DrivingMerge & 512 & DESPOT & $-4.92\pm8.61$ & $0.012511\pm0.001155$ \\
+\midrule
+DrivingMergeNoisy & 64 & DESPOT & $-10.47\pm8.99$ & $0.009300\pm0.000670$ \\
+DrivingMergeNoisy & 128 & DESPOT & $-5.23\pm8.53$ & $0.010680\pm0.000842$ \\
+DrivingMergeNoisy & 256 & DESPOT & $-12.51\pm9.05$ & $0.010181\pm0.000748$ \\
+DrivingMergeNoisy & 512 & AdaOPS & $-6.02\pm8.67$ & $0.074302\pm0.006036$ \\
+\midrule
+MedicalDiagnosis & 64 & ExactValueIteration & $21.69\pm2.30$ & $0.000061\pm0.000014$ \\
+MedicalDiagnosis & 128 & PBVI & $22.05\pm2.20$ & $0.000256\pm0.000019$ \\
+MedicalDiagnosis & 256 & PBVI & $21.34\pm2.18$ & $0.000440\pm0.000211$ \\
+MedicalDiagnosis & 512 & PBVI & $23.12\pm2.14$ & $0.000022\pm0.000001$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Additional BAS Ablation}
+
+\begin{table}[t]
+\centering
+\caption{TD($\lambda$) ablation on learned \texttt{BASDeepRollout}. ``Base'' is the original learned policy--value setup; ``TD($\lambda$)'' uses separate policy/value networks, Adam, and TD($\lambda$) relabeling. Entries report the best learned-BAS point per environment from each run.}
+\label{tab:tdlambda}
+\scriptsize
+\begin{tabular}{@{}p{0.20\columnwidth} p{0.18\columnwidth} p{0.22\columnwidth} p{0.12\columnwidth} p{0.12\columnwidth}@{}}
+\toprule
+Env. & Variant & Best return & Ep. sec & Raw MSE \\
+\midrule
+Tiger & Base & $-0.72\pm7.66$ & 0.699 & 757.6 \\
+Tiger & TD($\lambda$) & $-2.21\pm7.54$ & 0.608 & 551.5 \\
+RockSample\allowbreak(4,3) & Base & $8.05\pm0.81$ & 0.868 & 28.6 \\
+RockSample\allowbreak(4,3) & TD($\lambda$) & $7.20\pm0.90$ & 1.181 & 6.1 \\
+Medical\allowbreak Diagnosis & Base & $20.65\pm4.03$ & 0.030 & 547.9 \\
+Medical\allowbreak Diagnosis & TD($\lambda$) & $17.81\pm4.79$ & 0.032 & 560.8 \\
+DrivingMerge & Base & $6.92\pm13.02$ & 0.037 & 4261.9 \\
+DrivingMerge & TD($\lambda$) & $7.40\pm13.11$ & 0.033 & 2084.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

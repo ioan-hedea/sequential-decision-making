@@ -194,7 +194,7 @@ def make_rocksample_pomdp(n: int = 4, k: int = 3) -> TabularPOMDP:
     )
 
 
-def make_driving_merge_pomdp() -> TabularPOMDP:
+def make_driving_merge_pomdp(sensor_noise: float = 0.0, name: str = "DrivingMerge") -> TabularPOMDP:
     # Hidden gap-size state + absorbing outcomes.
     SMALL, MEDIUM, LARGE, MERGED, COLLISION = range(5)
     WAIT, SLOW_MERGE, MERGE = range(3)
@@ -239,6 +239,13 @@ def make_driving_merge_pomdp() -> TabularPOMDP:
         COLLISION: [0.0, 0.0, 0.0, 1.0],
     }
 
+    if sensor_noise > 0.0:
+        noise = float(np.clip(sensor_noise, 0.0, 0.49))
+        uniform_non_terminal = np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0], dtype=float)
+        for s in (SMALL, MEDIUM, LARGE):
+            base = np.asarray(sensor_model[s], dtype=float)
+            sensor_model[s] = ((1.0 - noise) * base + noise * uniform_non_terminal).tolist()
+
     for a in range(n_actions):
         for sp in range(n_states):
             O[a, sp, :] = sensor_model[sp]
@@ -261,7 +268,7 @@ def make_driving_merge_pomdp() -> TabularPOMDP:
     R = np.einsum("ass,ass->sa", T, R_sas)
 
     return TabularPOMDP(
-        name="DrivingMerge",
+        name=name,
         gamma=0.97,
         transition=T,
         observation=O,
@@ -392,7 +399,253 @@ def make_medical_diagnosis_pomdp() -> TabularPOMDP:
     )
 
 
-def make_standard_environments(rocksample_n: int = 4, rocksample_k: int = 3) -> Dict[str, TabularPOMDP]:
+def make_hallway_search_pomdp() -> TabularPOMDP:
+    action_names = ["move_left", "move_right", "scan", "claim"]
+    obs_names = ["goal_left", "goal_here", "goal_right", "quiet", "terminal"]
+
+    positions = 3
+    terminal_state = positions * positions
+
+    def state_idx(agent_pos: int, goal_pos: int) -> int:
+        return agent_pos * positions + goal_pos
+
+    state_names = [f"agent{agent}_goal{goal}" for agent in range(positions) for goal in range(positions)] + [
+        "terminal"
+    ]
+
+    n_states = terminal_state + 1
+    n_actions = len(action_names)
+    n_obs = len(obs_names)
+
+    MOVE_LEFT, MOVE_RIGHT, SCAN, CLAIM = range(n_actions)
+
+    T = np.zeros((n_actions, n_states, n_states), dtype=float)
+    O = np.zeros((n_actions, n_states, n_obs), dtype=float)
+    R = np.zeros((n_states, n_actions), dtype=float)
+
+    for agent in range(positions):
+        for goal in range(positions):
+            s = state_idx(agent, goal)
+
+            left_pos = max(0, agent - 1)
+            right_pos = min(positions - 1, agent + 1)
+
+            T[MOVE_LEFT, s, state_idx(left_pos, goal)] = 1.0
+            T[MOVE_RIGHT, s, state_idx(right_pos, goal)] = 1.0
+            T[SCAN, s, s] = 1.0
+            T[CLAIM, s, terminal_state] = 1.0
+
+            O[MOVE_LEFT, :, 3] = 1.0
+            O[MOVE_RIGHT, :, 3] = 1.0
+
+            relation = 1 if goal == agent else (0 if goal < agent else 2)
+            O[SCAN, s, relation] = 0.82
+            O[SCAN, s, (relation + 1) % 3] += 0.09
+            O[SCAN, s, (relation + 2) % 3] += 0.09
+
+            O[CLAIM, s, 4] = 1.0
+
+            R[s, MOVE_LEFT] = -1.0
+            R[s, MOVE_RIGHT] = -1.0
+            R[s, SCAN] = -2.0
+            R[s, CLAIM] = 25.0 if agent == goal else -20.0
+
+    for a in range(n_actions):
+        T[a, terminal_state, terminal_state] = 1.0
+        O[a, terminal_state, :] = 0.0
+        O[a, terminal_state, 4] = 1.0
+
+    initial = np.zeros(n_states, dtype=float)
+    for goal in range(positions):
+        initial[state_idx(1, goal)] = 1.0 / positions
+
+    return TabularPOMDP(
+        name="HallwaySearch",
+        gamma=0.96,
+        transition=T,
+        observation=O,
+        reward=R,
+        initial_belief=initial,
+        action_names=action_names,
+        observation_names=obs_names,
+        state_names=state_names,
+        terminal_states=[terminal_state],
+        horizon=10,
+    )
+
+
+def make_machine_maintenance_pomdp() -> TabularPOMDP:
+    GOOD, WORN, CRITICAL, FAILED = range(4)
+    OBSERVE, CONTINUE, SERVICE, REPLACE = range(4)
+
+    states = ["good", "worn", "critical", "failed"]
+    actions = ["observe", "continue", "service", "replace"]
+    observations = ["healthy", "warning", "alarm", "failed"]
+
+    n_states = len(states)
+    n_actions = len(actions)
+    n_obs = len(observations)
+
+    T = np.zeros((n_actions, n_states, n_states), dtype=float)
+    O = np.zeros((n_actions, n_states, n_obs), dtype=float)
+    reward_tensor = np.zeros((n_actions, n_states, n_states), dtype=float)
+
+    T[OBSERVE, :, :] = np.eye(n_states)
+    T[CONTINUE, GOOD, :] = [0.78, 0.18, 0.04, 0.0]
+    T[CONTINUE, WORN, :] = [0.02, 0.68, 0.22, 0.08]
+    T[CONTINUE, CRITICAL, :] = [0.0, 0.08, 0.50, 0.42]
+    T[CONTINUE, FAILED, FAILED] = 1.0
+
+    T[SERVICE, GOOD, :] = [0.92, 0.08, 0.0, 0.0]
+    T[SERVICE, WORN, :] = [0.70, 0.24, 0.06, 0.0]
+    T[SERVICE, CRITICAL, :] = [0.38, 0.44, 0.14, 0.04]
+    T[SERVICE, FAILED, FAILED] = 1.0
+
+    for s in (GOOD, WORN, CRITICAL):
+        T[REPLACE, s, GOOD] = 1.0
+    T[REPLACE, FAILED, FAILED] = 1.0
+
+    obs_observe = np.array(
+        [
+            [0.86, 0.12, 0.02, 0.0],
+            [0.16, 0.70, 0.14, 0.0],
+            [0.04, 0.21, 0.75, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    obs_default = np.array(
+        [
+            [0.74, 0.21, 0.05, 0.0],
+            [0.15, 0.63, 0.22, 0.0],
+            [0.05, 0.25, 0.70, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+
+    O[OBSERVE, :, :] = obs_observe
+    O[CONTINUE, :, :] = obs_default
+    O[SERVICE, :, :] = obs_default
+    O[REPLACE, :, :] = obs_default
+
+    for s in range(n_states):
+        for sp in range(n_states):
+            reward_tensor[OBSERVE, s, sp] = -1.0 if s != FAILED else 0.0
+            if s == FAILED:
+                reward_tensor[CONTINUE, s, sp] = 0.0
+                reward_tensor[SERVICE, s, sp] = 0.0
+                reward_tensor[REPLACE, s, sp] = 0.0
+                continue
+
+            running_reward = {GOOD: 8.0, WORN: 5.0, CRITICAL: 1.5}[s]
+            reward_tensor[CONTINUE, s, sp] = running_reward - (35.0 if sp == FAILED else 0.0)
+            reward_tensor[SERVICE, s, sp] = -6.0 - (18.0 if sp == FAILED else 0.0)
+            reward_tensor[REPLACE, s, sp] = -11.0
+
+    reward = np.einsum("ass,ass->sa", T, reward_tensor)
+
+    return TabularPOMDP(
+        name="MachineMaintenance",
+        gamma=0.97,
+        transition=T,
+        observation=O,
+        reward=reward,
+        reward_tensor=reward_tensor,
+        initial_belief=np.array([0.55, 0.30, 0.15, 0.0], dtype=float),
+        action_names=actions,
+        observation_names=observations,
+        state_names=states,
+        terminal_states=[FAILED],
+        horizon=14,
+    )
+
+
+def make_inventory_control_pomdp() -> TabularPOMDP:
+    LOW, HIGH = range(2)
+    max_inventory = 3
+    SENSE, ORDER0, ORDER1, ORDER2 = range(4)
+
+    action_names = ["sense", "order_0", "order_1", "order_2"]
+    observation_names = ["low_signal", "high_signal", "none"]
+
+    states: list[tuple[int, int]] = []
+    for inventory in range(max_inventory + 1):
+        for regime in (LOW, HIGH):
+            states.append((inventory, regime))
+
+    def state_idx(inventory: int, regime: int) -> int:
+        return inventory * 2 + regime
+
+    state_names = [f"inv{inventory}_{'low' if regime == LOW else 'high'}" for inventory, regime in states]
+    n_states = len(states)
+    n_actions = len(action_names)
+    n_obs = len(observation_names)
+
+    T = np.zeros((n_actions, n_states, n_states), dtype=float)
+    O = np.zeros((n_actions, n_states, n_obs), dtype=float)
+    reward_tensor = np.zeros((n_actions, n_states, n_states), dtype=float)
+
+    regime_transition = np.array([[0.82, 0.18], [0.28, 0.72]], dtype=float)
+    demand_probs = {
+        LOW: {0: 0.25, 1: 0.60, 2: 0.15},
+        HIGH: {0: 0.05, 1: 0.35, 2: 0.60},
+    }
+
+    for inventory, regime in states:
+        s = state_idx(inventory, regime)
+        for action in range(n_actions):
+            order_qty = 0 if action == SENSE else action - 1
+            post_order = min(max_inventory, inventory + order_qty)
+
+            for next_regime in (LOW, HIGH):
+                for demand, demand_prob in demand_probs[regime].items():
+                    next_inventory = max(0, post_order - demand)
+                    sp = state_idx(next_inventory, next_regime)
+                    prob = regime_transition[regime, next_regime] * demand_prob
+                    T[action, s, sp] += prob
+
+                    sales = min(post_order, demand)
+                    stockout = max(0, demand - post_order)
+                    holding = next_inventory
+                    order_cost = 0.0 if action == SENSE else 2.0 * order_qty
+                    sense_cost = 1.0 if action == SENSE else 0.0
+                    reward_tensor[action, s, sp] += prob * (
+                        6.0 * sales - 4.5 * stockout - 0.8 * holding - order_cost - sense_cost
+                    )
+
+            if action == SENSE:
+                O[action, :, :] = np.maximum(O[action, :, :], 0.0)
+                O[action, s, 0 if regime == LOW else 1] = 0.85
+                O[action, s, 1 if regime == LOW else 0] = 0.15
+            else:
+                O[action, s, 2] = 1.0
+
+    reward = np.einsum("ass,ass->sa", T, reward_tensor)
+
+    return TabularPOMDP(
+        name="InventoryControl",
+        gamma=0.96,
+        transition=T,
+        observation=O,
+        reward=reward,
+        reward_tensor=reward_tensor,
+        initial_belief=np.array([0.0, 0.0, 0.0, 0.0, 0.35, 0.65, 0.0, 0.0], dtype=float),
+        action_names=action_names,
+        observation_names=observation_names,
+        state_names=state_names,
+        horizon=16,
+    )
+
+
+def make_standard_environments(
+    rocksample_n: int = 4,
+    rocksample_k: int = 3,
+    include_harder_env: bool = False,
+    harder_rocksample_n: int = 5,
+    harder_rocksample_k: int = 4,
+    include_extra_env: bool = False,
+) -> Dict[str, TabularPOMDP]:
     envs = {
         "Tiger": make_tiger_pomdp(),
         f"RockSample({rocksample_n},{rocksample_k})": make_rocksample_pomdp(
@@ -402,4 +655,17 @@ def make_standard_environments(rocksample_n: int = 4, rocksample_k: int = 3) -> 
         "DrivingMerge": make_driving_merge_pomdp(),
         "MedicalDiagnosis": make_medical_diagnosis_pomdp(),
     }
+    if include_extra_env:
+        envs["HallwaySearch"] = make_hallway_search_pomdp()
+        envs["MachineMaintenance"] = make_machine_maintenance_pomdp()
+        envs["InventoryControl"] = make_inventory_control_pomdp()
+    if include_harder_env:
+        envs[f"RockSample({harder_rocksample_n},{harder_rocksample_k})"] = make_rocksample_pomdp(
+            n=harder_rocksample_n,
+            k=harder_rocksample_k,
+        )
+        envs["DrivingMergeNoisy"] = make_driving_merge_pomdp(
+            sensor_noise=0.30,
+            name="DrivingMergeNoisy",
+        )
     return envs

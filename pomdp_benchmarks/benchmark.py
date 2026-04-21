@@ -10,6 +10,7 @@ import numpy as np
 
 from .core import EpisodeRecord, TabularPOMDP, bayes_update, js_divergence
 from .environments import make_standard_environments
+from .seeding import stable_seed_offset
 from .solvers import BaseSolver, UnsupportedSolverError, make_solver_suite
 
 
@@ -19,12 +20,21 @@ class BenchmarkConfig:
     base_seed: int = 7
     belief_budgets: tuple[int, ...] = (64, 128, 256, 512)
     include_adaops: bool = False
+    include_bas: bool = False
+    include_bas_standalone: bool = False
+    bas_ablation: str = "both"
+    bas_policy_model: str = "heuristic"
+    bas_model_dir: str | None = None
     include_sarsop_julia: bool = False
     julia_bin: str = "julia"
     sarsop_timeout_sec: float = 120.0
     sarsop_precision: float = 1e-3
     rocksample_n: int = 4
     rocksample_k: int = 3
+    include_harder_env: bool = False
+    harder_rocksample_n: int = 5
+    harder_rocksample_k: int = 4
+    include_extra_env: bool = False
     max_steps_override: int | None = None
 
 
@@ -44,6 +54,26 @@ class AggregateResult:
     belief_divergence_std: float | None
     status: str
     notes: str = ""
+
+
+@dataclass
+class SearchTrainingExample:
+    env: str
+    belief: np.ndarray
+    policy_target: np.ndarray
+    raw_action_counts: np.ndarray
+    root_action_values: np.ndarray
+    root_action_gap: float
+    belief_entropy: float
+    rollout_depth_mean: float
+    rollout_depth_std: float
+    value_uncertainty_target: float
+    planner_value_target: float
+    monte_carlo_value_target: float
+    value_target: float
+    reward: float
+    next_belief: np.ndarray
+    done: bool
 
 
 def run_episode(
@@ -93,6 +123,135 @@ def run_episode(
     )
 
 
+def collect_search_training_examples(
+    env: TabularPOMDP,
+    solver: BaseSolver,
+    *,
+    belief_budget: int,
+    seed: int,
+    max_steps: int,
+) -> list[SearchTrainingExample]:
+    env_rng = np.random.default_rng(seed)
+    solver_rng = np.random.default_rng(seed + 1_000_003)
+
+    exact_belief = env.initial_belief()
+    solver.reset(env, solver_rng, belief_budget, exact_belief.copy())
+    true_state = env.sample_initial_state(env_rng)
+
+    raw_examples: list[
+        tuple[
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            float,
+            float,
+            float,
+            float,
+            float,
+            float,
+            float,
+            np.ndarray,
+            bool,
+        ]
+    ] = []
+
+    for _ in range(max_steps):
+        current_belief = exact_belief.copy()
+        action = solver.act(exact_belief.copy())
+        policy_target = solver.latest_search_policy_target()
+        auxiliary = solver.latest_search_auxiliary_targets()
+        planner_value_target = solver.latest_search_value_target()
+
+        true_state, observation, reward, done = env.step(true_state, action, env_rng)
+        next_belief = bayes_update(env, exact_belief, action, observation)
+        if policy_target is not None:
+            raw_counts = np.asarray(
+                auxiliary.get("raw_action_counts", np.zeros(env.n_actions, dtype=float)) if auxiliary else np.zeros(env.n_actions, dtype=float),
+                dtype=float,
+            )
+            if raw_counts.shape != (env.n_actions,):
+                raw_counts = np.zeros(env.n_actions, dtype=float)
+            root_action_values = np.asarray(
+                auxiliary.get("root_action_values", np.zeros(env.n_actions, dtype=float)) if auxiliary else np.zeros(env.n_actions, dtype=float),
+                dtype=float,
+            )
+            if root_action_values.shape != (env.n_actions,):
+                root_action_values = np.zeros(env.n_actions, dtype=float)
+            raw_examples.append(
+                (
+                    current_belief,
+                    policy_target.copy(),
+                    raw_counts.copy(),
+                    root_action_values.copy(),
+                    float(auxiliary.get("root_action_gap", 0.0) if auxiliary else 0.0),
+                    float(auxiliary.get("belief_entropy", 0.0) if auxiliary else 0.0),
+                    float(auxiliary.get("rollout_depth_mean", 0.0) if auxiliary else 0.0),
+                    float(auxiliary.get("rollout_depth_std", 0.0) if auxiliary else 0.0),
+                    float(auxiliary.get("value_uncertainty_target", 0.0) if auxiliary else 0.0),
+                    float(planner_value_target if planner_value_target is not None else 0.0),
+                    float(reward),
+                    next_belief.copy(),
+                    bool(done),
+                )
+            )
+
+        exact_belief = next_belief
+        solver.observe(action, observation, exact_belief.copy())
+
+        if done:
+            break
+
+    examples: list[SearchTrainingExample] = []
+    discounted = 0.0
+    value_targets = [0.0] * len(raw_examples)
+    for idx in range(len(raw_examples) - 1, -1, -1):
+        reward = raw_examples[idx][10]
+        discounted = reward + env.gamma * discounted
+        value_targets[idx] = float(discounted)
+
+    for idx, (
+        belief,
+        policy_target,
+        raw_action_counts,
+        root_action_values,
+        root_action_gap,
+        belief_entropy,
+        rollout_depth_mean,
+        rollout_depth_std,
+        value_uncertainty_target,
+        planner_value_target,
+        reward,
+        next_belief,
+        done,
+    ) in enumerate(raw_examples):
+        monte_carlo_value_target = value_targets[idx]
+        initial_value_target = (
+            planner_value_target if np.isfinite(planner_value_target) else monte_carlo_value_target
+        )
+        examples.append(
+            SearchTrainingExample(
+                env=env.name,
+                belief=belief,
+                policy_target=policy_target,
+                raw_action_counts=raw_action_counts,
+                root_action_values=root_action_values,
+                root_action_gap=root_action_gap,
+                belief_entropy=belief_entropy,
+                rollout_depth_mean=rollout_depth_mean,
+                rollout_depth_std=rollout_depth_std,
+                value_uncertainty_target=value_uncertainty_target,
+                planner_value_target=planner_value_target,
+                monte_carlo_value_target=monte_carlo_value_target,
+                value_target=initial_value_target,
+                reward=reward,
+                next_belief=next_belief,
+                done=done,
+            )
+        )
+    return examples
+
+
 def _aggregate_records(
     env_name: str,
     solver_name: str,
@@ -133,9 +292,18 @@ def run_benchmark_suite(config: BenchmarkConfig) -> list[AggregateResult]:
     envs = make_standard_environments(
         rocksample_n=config.rocksample_n,
         rocksample_k=config.rocksample_k,
+        include_harder_env=config.include_harder_env,
+        harder_rocksample_n=config.harder_rocksample_n,
+        harder_rocksample_k=config.harder_rocksample_k,
+        include_extra_env=config.include_extra_env,
     )
     solver_specs = make_solver_suite(
         include_adaops=config.include_adaops,
+        include_bas=config.include_bas,
+        include_bas_standalone=config.include_bas_standalone,
+        bas_ablation=config.bas_ablation,
+        bas_policy_model=config.bas_policy_model,
+        bas_model_dir=config.bas_model_dir,
         include_sarsop_julia=config.include_sarsop_julia,
         julia_bin=config.julia_bin,
         sarsop_timeout_sec=config.sarsop_timeout_sec,
@@ -163,7 +331,7 @@ def run_benchmark_suite(config: BenchmarkConfig) -> list[AggregateResult]:
                 try:
                     for episode in range(config.episodes):
                         seed = config.base_seed + 10_000 * episode + 97 * belief_budget
-                        seed += 1_000_000 * abs(hash((env_name, spec.name))) % 10_000_000
+                        seed += stable_seed_offset(env_name, spec.name)
                         episode_records.append(
                             run_episode(
                                 env,

@@ -37,6 +37,7 @@ A clean benchmarking harness for comparing solver behavior under partial observa
 - POMCP (online Monte Carlo tree search with particle belief)
 - DESPOT-style sparse scenario online planner
 - Optional AdaOPS-style adaptive online variant (`--include-adaops`)
+- Optional BAS belief-adaptive search (`--include-bas`): a compute-allocation method that biases online search toward value-relevant belief-action regions, with handcrafted, distilled-neural, or learned-from-search priors
 - Optional Julia SARSOP bridge (`--include-sarsop-julia`)
 
 ### Environments Covered
@@ -45,13 +46,14 @@ A clean benchmarking harness for comparing solver behavior under partial observa
 - `RockSample(4,3)` (scalability and information gathering)
 - `DrivingMerge` (custom uncertainty-aware merge decision)
 - `MedicalDiagnosis` (custom sequential testing and stopping)
+- Optional harder settings: `RockSample(5,4)` and `DrivingMergeNoisy` (`--include-harder-env`)
 
 ### Metrics (Scientific Reporting)
 
 - Discounted return: `mean +- std` across episodes
 - Runtime per step: `step_time_mean_ms +- step_time_std_ms`
 - Total compute per episode: `episode_compute_mean_sec +- episode_compute_std_sec`
-- Belief divergence: `mean +- std` (exact belief vs particle approximation, where applicable)
+- Belief divergence: `mean +- std` Jensen-Shannon divergence (exact belief vs particle approximation, where applicable)
 
 ### Latest Full Benchmark Snapshot
 
@@ -59,6 +61,7 @@ Source artifacts:
 - `pomdp_benchmarks/results/full/benchmark_summary.csv`
 - `pomdp_benchmarks/results/full/benchmark_summary.json`
 - `pomdp_benchmarks/results/full/scaling_curve.png`
+- `pomdp_benchmarks/results/full/pareto_return_vs_compute.png`
 
 Configuration used:
 - `40` episodes per setting
@@ -78,6 +81,10 @@ Best mean discounted return by environment:
 Scalability plot with error bars:
 
 ![Scaling Curve](pomdp_benchmarks/results/full/scaling_curve.png)
+
+Return-vs-compute Pareto frontiers:
+
+![Pareto Curve](pomdp_benchmarks/results/full/pareto_return_vs_compute.png)
 
 ### Reproduce Project 2
 
@@ -103,6 +110,60 @@ python3 -m pomdp_benchmarks.plot_scaling \
   --csv pomdp_benchmarks/results/full/benchmark_summary.csv
 ```
 
+Plot return-vs-compute Pareto frontiers:
+
+```bash
+python3 -m pomdp_benchmarks.plot_pareto \
+  --csv pomdp_benchmarks/results/full/benchmark_summary.csv \
+  --out pomdp_benchmarks/results/full/pareto_return_vs_compute.png
+```
+
+Extended stress run (AdaOPS + harder environments):
+
+```bash
+python3 -m pomdp_benchmarks.run \
+  --episodes 40 \
+  --belief-budgets 64,128,256,512 \
+  --include-adaops \
+  --include-harder-env
+```
+
+Extended stress run with the new compute-allocation method:
+
+```bash
+python3 -m pomdp_benchmarks.run \
+  --episodes 40 \
+  --belief-budgets 64,128,256,512 \
+  --include-adaops \
+  --include-bas \
+  --include-harder-env
+```
+
+BAS ablation examples:
+
+```bash
+# Prior + rollout heuristic
+python3 -m pomdp_benchmarks.run --quick --include-bas --bas-ablation both
+
+# Prior only
+python3 -m pomdp_benchmarks.run --quick --include-bas --bas-ablation root_only
+
+# Rollout heuristic only
+python3 -m pomdp_benchmarks.run --quick --include-bas --bas-ablation rollout_only
+
+# Deep prior + rollout shaping with a neural policy prior
+python3 -m pomdp_benchmarks.run --quick --include-bas --bas-ablation deep_rollout --bas-policy-model neural
+
+# Train learned BAS checkpoints from search visit counts and returns
+python3 -m pomdp_benchmarks.train_bas_model --quick --bas-ablation deep_rollout
+
+# Stronger learned-BAS training with iterative data aggregation
+python3 -m pomdp_benchmarks.train_bas_model --episodes 100 --belief-budget 128 --bas-ablation deep_rollout --aggregation-rounds 3
+
+# Evaluate BAS with learned policy/value checkpoints
+python3 -m pomdp_benchmarks.run --quick --include-bas --bas-ablation deep_rollout --bas-policy-model learned --bas-model-dir pomdp_benchmarks/learned_bas_models/checkpoints
+```
+
 ### Optional Julia SARSOP Bridge
 
 Install Julia dependencies:
@@ -117,7 +178,18 @@ Include SARSOP in benchmark runs:
 python3 -m pomdp_benchmarks.run --quick --include-sarsop-julia
 ```
 
+If `julia` comes from `juliaup`, the benchmark now tries to resolve a concrete installed Julia binary automatically to avoid launcher lockfile issues in restricted environments. You can still override it explicitly with `--julia-bin /path/to/julia`.
+
 If Julia is unavailable or fails, `SARSOPJulia` is marked `skipped` rather than crashing the full benchmark sweep.
+
+Estimate how many episodes are needed to tighten CI95 widths:
+
+```bash
+python3 -m pomdp_benchmarks.ci_episode_plan \
+  --summary pomdp_benchmarks/results/20260410-102420/benchmark_summary.json \
+  --env DrivingMerge \
+  --top-k 2
+```
 
 ## Quick Start (Whole Repo)
 

@@ -1,0 +1,91 @@
+\begin{thebibliography}{13}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Igl et~al.(2018)Igl, Zintgraf, Le, Wood, and Whiteson]{igl2018dvrl}
+Maximilian Igl, Luisa~M. Zintgraf, Tuan~Anh Le, Frank Wood, and Shimon
+  Whiteson.
+\newblock Deep variational reinforcement learning for {POMDP}s.
+\newblock In \emph{Proceedings of the 35th International Conference on Machine
+  Learning (ICML)}, 2018.
+
+\bibitem[Kaelbling et~al.(1998)Kaelbling, Littman, and
+  Cassandra]{kaelbling1998planning}
+Leslie~Pack Kaelbling, Michael~L Littman, and Anthony~R Cassandra.
+\newblock Planning and acting in partially observable stochastic domains.
+\newblock \emph{Artificial Intelligence}, 101\penalty0 (1-2):\penalty0 99--134,
+  1998.
+
+\bibitem[Karkus et~al.(2017)Karkus, Hsu, and Lee]{karkus2017qmdpnet}
+P{\'e}ter Karkus, David Hsu, and Wee~Sun Lee.
+\newblock Qmdp-net: Deep learning for planning under partial observability.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, volume~30, 2017.
+
+\bibitem[Kurniawati et~al.(2008)Kurniawati, Hsu, and Lee]{kurniawati2008sarsop}
+Hanna Kurniawati, David Hsu, and Wee~Sun Lee.
+\newblock Sarsop: Efficient point-based pomdp planning by approximating
+  optimally reachable belief spaces.
+\newblock In \emph{Robotics: Science and Systems (RSS)}, 2008.
+
+\bibitem[Littman et~al.(1994)Littman, Cassandra, and
+  Kaelbling]{littman1994witness}
+Michael~L Littman, Anthony~R Cassandra, and Leslie~Pack Kaelbling.
+\newblock The witness algorithm: Solving partially observable markov decision
+  processes.
+\newblock \emph{Technical Report}, 1994.
+
+\bibitem[Luo et~al.(2019)Luo, Bai, Hsu, and Lee]{luo2019isdespot}
+Yuanfu Luo, Haoyu Bai, David Hsu, and Wee~Sun Lee.
+\newblock Importance sampling for online planning under uncertainty.
+\newblock \emph{The International Journal of Robotics Research}, 38\penalty0
+  (2-3):\penalty0 162--183, 2019.
+
+\bibitem[Pineau et~al.(2003)Pineau, Gordon, and Thrun]{pineau2003pbvi}
+Joelle Pineau, Geoffrey Gordon, and Sebastian Thrun.
+\newblock Point-based value iteration: An anytime algorithm for pomdps.
+\newblock In \emph{Proceedings of the 18th International Joint Conference on
+  Artificial Intelligence (IJCAI)}, pages 1025--1032, 2003.
+
+\bibitem[Ross and Chaib-draa(2007)]{ross2007aems}
+St{\'e}phane Ross and Brahim Chaib-draa.
+\newblock Aems: An anytime online search algorithm for approximate policy
+  refinement in large {POMDP}s.
+\newblock In \emph{Proceedings of the 20th International Joint Conference on
+  Artificial Intelligence (IJCAI)}, pages 2592--2598, 2007.
+
+\bibitem[Ross et~al.(2008)Ross, Pineau, Paquet, and Chaib-draa]{ross2008online}
+St{\'e}phane Ross, Joelle Pineau, S{\'e}bastien Paquet, and Brahim Chaib-draa.
+\newblock Online planning algorithms for {POMDP}s.
+\newblock \emph{Journal of Artificial Intelligence Research}, 32:\penalty0
+  663--704, 2008.
+
+\bibitem[Silver and Veness(2010)]{silver2010pomcp}
+David Silver and Joel Veness.
+\newblock Monte-carlo planning in large pomdps.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, volume~23, 2010.
+
+\bibitem[Smallwood and Sondik(1973)]{smallwood1973optimal}
+Richard~D Smallwood and Edward~J Sondik.
+\newblock The optimal control of partially observable markov processes over a
+  finite horizon.
+\newblock \emph{Operations Research}, 21\penalty0 (5):\penalty0 1071--1088,
+  1973.
+
+\bibitem[Somani et~al.(2013)Somani, Ye, Hsu, and Lee]{somani2013despot}
+Adhiraj Somani, Nan Ye, David Hsu, and Wee~Sun Lee.
+\newblock Despot: Online pomdp planning with regularization.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, volume~26, 2013.
+
+\bibitem[Sunberg and Kochenderfer(2017)]{sunberg2017pomcpow}
+Zachary Sunberg and Mykel~J. Kochenderfer.
+\newblock Pomcpow: An online algorithm for {POMDP}s with continuous state,
+  action, and observation spaces.
+\newblock \emph{CoRR}, abs/1709.06196, 2017.
+
+\end{thebibliography}
